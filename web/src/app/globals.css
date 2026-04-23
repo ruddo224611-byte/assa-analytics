@@ -1,0 +1,35 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@latest/dist/web/variable/pretendardvariable.css");
+@import url("https://cdn.jsdelivr.net/gh/fonts-archive/GmarketSans/GmarketSans.css");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 라이트 모드 고정 — 다크모드 차단 */
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  background: #ffffff;
+  color: #0f172a;
+}
+
+@layer components {
+  /* 기본 카드 컨테이너 — 리포트/섹션 박스에 사용 */
+  .card {
+    @apply rounded-xl border border-slate-200 bg-white shadow-sm;
+  }
+
+  /* 브랜드 색상 칩 — 라벨/상태 표시용 */
+  .chip-brand {
+    @apply inline-flex items-center gap-1 rounded-full border border-brand-100 bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
