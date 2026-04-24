@@ -13,26 +13,12 @@
  * 활용신청 완료되면 `fetchStoresInRadius` 가 그대로 동작하도록 작성해두었음.
  */
 
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
+import { requireEnv } from "./lib/env";
 
-const ROOT = process.cwd();
-const ENV_PATH = resolve(ROOT, "web/.env.local");
-const SAMPLE_DIR = resolve(ROOT, "docs/phase0/samples");
-
-function loadEnv(): Record<string, string> {
-  const out: Record<string, string> = {};
-  const raw = readFileSync(ENV_PATH, "utf8");
-  for (const line of raw.split(/\r?\n/)) {
-    const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
-    if (m) out[m[1]] = m[2].trim();
-  }
-  return out;
-}
-
-const env = loadEnv();
-const KEY = env.PUBLIC_DATA_API_KEY;
-if (!KEY) throw new Error("PUBLIC_DATA_API_KEY 가 web/.env.local 에 없음");
+const SAMPLE_DIR = resolve(process.cwd(), "docs/phase0/samples");
+const KEY = requireEnv("PUBLIC_DATA_API_KEY");
 
 type JsonValue = unknown;
 
