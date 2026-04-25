@@ -54,8 +54,12 @@ export interface MergeInputs {
   juminHouseholdCsv: string;
   juminAgeCsv: string;
   ntsCsv: string;
-  sbizStoresFiles: string[]; // raw json 경로들 (해당 동 + 인접 동)
-  rebRowsFile: string; // raw reb json 경로
+  // 둘 중 하나만 사용 (단일 빌드는 파일 경로 / 배치 빌드는 메모리 stores 직접 전달)
+  sbizStoresFiles?: string[]; // raw json 경로들 (해당 동 + 인접 동)
+  sbizStores?: SbizStore[]; // 메모리에 이미 로드된 stores
+  // 둘 중 하나만 사용
+  rebRowsFile?: string; // raw reb json 경로
+  rebPivot?: ReturnType<typeof pivotByZoneAndFloor>; // 미리 피벗된 결과 (배치 빌드)
   ntsBaseLabel: string; // 예: "2025-08"
   rebBaseLabel: string; // 예: "2025-Q1"
   juminBaseLabel: string; // 예: "2026-03"
@@ -143,8 +147,12 @@ export function mergeArea(inputs: MergeInputs): MergedReport {
 
   // 3) 경쟁 (반경별 sbiz 카운트)
   const allStores: SbizStore[] = [];
-  for (const f of inputs.sbizStoresFiles) {
-    allStores.push(...(JSON.parse(readFileSync(f, "utf8")) as SbizStore[]));
+  if (inputs.sbizStores) {
+    allStores.push(...inputs.sbizStores);
+  } else if (inputs.sbizStoresFiles) {
+    for (const f of inputs.sbizStoresFiles) {
+      allStores.push(...(JSON.parse(readFileSync(f, "utf8")) as SbizStore[]));
+    }
   }
   const sbizCodeSet = new Set(upjong.sbiz_소분류.map((s) => s.code));
   const matched = allStores.filter((s) => sbizCodeSet.has(s.indsSclsCd));
@@ -161,9 +169,10 @@ export function mergeArea(inputs: MergeInputs): MergedReport {
     상가데이터_총수: matched.length,
   };
 
-  // 4) 임대료 — REB pivot + zone 매핑
-  const rebRows = JSON.parse(readFileSync(inputs.rebRowsFile, "utf8")) as RebRow[];
-  const pivot = pivotByZoneAndFloor(rebRows);
+  // 4) 임대료 — REB pivot + zone 매핑 (배치 빌드 시 미리 피벗된 결과 재사용)
+  const pivot = inputs.rebPivot ?? pivotByZoneAndFloor(
+    JSON.parse(readFileSync(inputs.rebRowsFile!, "utf8")) as RebRow[]
+  );
   const zoneMap = findZoneForAdong(loadRebZoneMapping(), region.adong_jumin_10);
   const zoneRows = zoneMap
     ? pivot.filter((p) => p.상권_full === zoneMap.reb_zone_full)
