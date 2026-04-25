@@ -111,26 +111,45 @@
 │   │   └── page.tsx             # 현재 placeholder 히어로
 │   ├── tailwind.config.ts       # brand 팔레트 50~700, Pretendard fontFamily
 │   └── .env.local               # gitignored
-├── scripts/                     # 데이터 검증·ETL 스크립트 (npx tsx)
-│   ├── lib/
-│   │   ├── encoding.ts          # EUC-KR(CP949) → UTF-8 공용 유틸
-│   │   └── env.ts               # .env.local 간이 파서
-│   ├── fetch-sangga.ts          # 상가 API 동작 확인 (15083033 + B553077)
-│   ├── fetch-ntax.ts            # 국세청 100대 업종 CSV 다운 + 샘플 생성
-│   ├── fetch-jumin.ts           # 주민등록 인구·세대현황 CSV 다운 + 샘플 (연/월 인자)
-│   └── fetch-reb.ts             # 부동산원 R-ONE OpenAPI 층별임대료 다운 (분기 인자 — 예: 202503)
+├── data/                        # Phase 1 ETL 디렉터리
+│   ├── .gitignore               # raw/ 무시
+│   ├── raw/{period}/            # 원본 캐시 (gitignored)
+│   ├── reference/               # 매핑·taxonomy (committed)
+│   │   ├── sbiz-upjong-codes.csv         # 공단 SBIZ 247 소분류
+│   │   ├── taxonomy-nts-to-sbiz.csv      # NTS↔SBIZ 매핑
+│   │   ├── region-codes.csv              # 행정동 표준 코드 (Week 1: 강남구 22개)
+│   │   └── reb-zone-mapping.csv          # 행정동 → R-ONE 상권
+│   └── build/                   # 빌드 산출물 (committed)
+│       └── {시도slug}/{시군구slug}/{행정동slug}/{업종slug}.json
+├── scripts/                     # 데이터 검증·ETL (npx tsx)
+│   ├── lib/                     # 공통 라이브러리
+│   │   ├── encoding.ts          # EUC-KR(CP949) → UTF-8
+│   │   ├── env.ts               # .env.local 파서
+│   │   ├── paths.ts             # data/ 경로 + slugify
+│   │   ├── region.ts            # 행정동 코드 변환 (10↔8↔5)
+│   │   ├── sbiz.ts              # B553077 (60초 재시도, 페이지네이션)
+│   │   ├── reb.ts               # R-ONE (페이지네이션, 분기 fallback)
+│   │   ├── jumin.ts             # 행안부 CSV (인구·세대·연령)
+│   │   ├── nts.ts               # 국세청 100대 업종 CSV
+│   │   └── taxonomy.ts          # NTS↔SBIZ 매핑 로더
+│   ├── ingest/                  # 외부 → raw (CLI 진입점)
+│   │   ├── ingest-jumin.ts
+│   │   ├── ingest-sbiz.ts
+│   │   ├── ingest-nts.ts
+│   │   └── ingest-reb.ts
+│   ├── transform/               # raw → 정규화
+│   │   ├── normalize-region.ts
+│   │   ├── normalize-upjong.ts
+│   │   └── merge-area.ts        # (지역, 업종) → 단일 산출물
+│   ├── build-data.ts            # ★ Phase 1 진입점 (ingest 자동 호출 + transform + 저장)
+│   └── fetch-{sangga,ntax,jumin,reb}.ts   # (Phase 0 ad-hoc 검증 스크립트, 유지)
 ├── docs/
-│   ├── ROADMAP.md               # Phase 0~5 전체 일정 (체크리스트)
-│   └── phase0/
-│       ├── day{1..5}-*.md       # Phase 0 Day 별 검증/셋업 기록
-│       └── samples/             # 검증 샘플 + 참조 테이블 (커밋)
-│           ├── sbiz-upjong-codes.csv         # 공단 SBIZ 247 소분류 전체
-│           ├── taxonomy-nts-to-sbiz.csv      # NTS↔SBIZ 매핑 (커버 99%)
-│           ├── ntax-life100-sample.csv
-│           ├── jumin-sample.csv (연령별)
-│           ├── jumin-household-sample.csv (세대수)
-│           ├── sangga-sample.json
-│           └── rent-sample.csv (placeholder)
+│   ├── ROADMAP.md               # Phase 0~5 전체 일정
+│   ├── phase0/
+│   │   ├── day{1..5}-*.md       # Phase 0 Day 별 기록
+│   │   └── samples/             # Phase 0 검증 샘플
+│   └── phase1/
+│       └── week{1..3}.md        # Phase 1 Week 별 기록
 ├── CLAUDE.md                    # ← 이 파일
 └── README.md
 ```
