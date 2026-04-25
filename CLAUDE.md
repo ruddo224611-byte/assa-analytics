@@ -121,10 +121,15 @@
 ├── docs/
 │   ├── ROADMAP.md               # Phase 0~5 전체 일정 (체크리스트)
 │   └── phase0/
-│       ├── day1-*.md            # (Phase 0 Day 별 검증/셋업 기록)
-│       ├── day2-data-validation.md
-│       ├── day3-data-validation.md
-│       └── samples/             # 검증 샘플 (커밋)
+│       ├── day{1..5}-*.md       # Phase 0 Day 별 검증/셋업 기록
+│       └── samples/             # 검증 샘플 + 참조 테이블 (커밋)
+│           ├── sbiz-upjong-codes.csv         # 공단 SBIZ 247 소분류 전체
+│           ├── taxonomy-nts-to-sbiz.csv      # NTS↔SBIZ 매핑 (커버 99%)
+│           ├── ntax-life100-sample.csv
+│           ├── jumin-sample.csv (연령별)
+│           ├── jumin-household-sample.csv (세대수)
+│           ├── sangga-sample.json
+│           └── rent-sample.csv (placeholder)
 ├── CLAUDE.md                    # ← 이 파일
 └── README.md
 ```
