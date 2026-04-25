@@ -84,7 +84,7 @@
 |---|---|---|
 | 공공데이터포털 일반 인증키 | 🟡 | `.env.local` 의 `PUBLIC_DATA_API_KEY` — 15083033 네임스페이스만 활성 |
 | 상가업소 통계 (odcloud 15083033) | 🟢 제한 | 작동하지만 집계만. POI·좌표 없음 |
-| 상가 반경 검색 (B553077 baroApi) | 🔴 | 403. **활용신청 운영자 액션 대기**. MVP 핵심 기능의 블로커 |
+| 상가 반경 검색 (B553077 baroApi) | 🟢 | **활용신청 승인·키 활성화 완료 (2026-04-25)**. `SBIZ_API_KEY` 사용. 역삼역 500m 카페 177건 실측 (역삼1동 152 + 역삼2동 25). 행정동코드는 jumin 의 10자리 → B553077 의 **8자리 (앞 8자리)** 변환 필요 |
 | 행안부 주민등록 인구 (연령별) | 🟢 | `jumin.mois.go.kr/downloadCsvAge.do`, EUC-KR, 행정동 단위 |
 | 행안부 주민등록 세대현황 | 🟢 | `jumin.mois.go.kr/downloadCsv.do` (statMonth), 인구·세대수·세대당 인구·성비 일괄 (Day 4 검증 완료) |
 | NTS 100대 생활업종 (15061118) | 🟢 | EUC-KR CSV 직접 다운로드 OK. 100업종 × 256시군구 × 3시점 |
@@ -93,7 +93,8 @@
 
 ### 환경변수 (`.env.local`)
 
-- `PUBLIC_DATA_API_KEY` — 공공데이터포털 일반 인증키
+- `PUBLIC_DATA_API_KEY` — 공공데이터포털 일반 인증키 (15083033 odcloud / NTS / 등)
+- `SBIZ_API_KEY` — apis.data.go.kr B553077 baroApi 전용 (값은 PUBLIC_DATA_API_KEY 와 동일하지만 의미 분리)
 - `NEXT_PUBLIC_KAKAO_JS_KEY` — 카카오맵 JS 키 (클라이언트 노출 OK)
 - `ANTHROPIC_API_KEY` (추후) — Claude Haiku 4.5 호출용
 - `REB_API_KEY` (추후) — R-ONE OpenAPI 승인 후
