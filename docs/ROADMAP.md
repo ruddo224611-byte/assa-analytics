@@ -14,17 +14,17 @@ Phase 0 부터 런칭(Phase 5) 까지 전체 일정. 이 파일은 매일 "Day N
 - [x] **Day 2:** 상가업소 API (odcloud 15083033 + B553077) + 주민등록 인구 CSV 검증 ([PR #2](https://github.com/ruddo224611-byte/assa-analytics/pull/2))
 - [x] **Day 3:** 국세청 100대 생활업종 + 부동산원 임대동향조사 검증 + 프로젝트 문서화(CLAUDE.md / ROADMAP.md / encoding 공용 유틸)
 - [x] **Day 4:** 주민등록 세대현황 검증 완료 / B553077·R-ONE 활용신청은 운영자 액션 대기 / 누적 종합 판정
-- [ ] **Day 5:** taxonomy 매핑 테이블 초안 (NTS 100업종 ↔ 공단 대/중/소분류 ↔ assasup 지원사업 업종 코드) + Phase 1 설계 확정
+- [x] **Day 5:** NTS↔SBIZ 매핑 99% 커버 + Phase 1 디렉터리·스키마·스케줄 확정 (assasup 은 업종 축 X → URL 빌더로 우회)
 
 ---
 
 ## Phase 1 — ETL 파이프라인 (2~3주)
 
-검증된 소스들을 주기적으로 수집·정제·빌드 산출물로 떨어뜨리는 워크플로 구축.
+검증된 소스들을 주기적으로 수집·정제·빌드 산출물로 떨어뜨리는 워크플로 구축. 디렉터리·스키마는 [docs/phase0/day5-taxonomy-and-design.md](phase0/day5-taxonomy-and-design.md) 참고.
 
-- [ ] **Week 1:** 상가업소 + 주민등록 인구 수집 스크립트 → 지역·업종별 JSON 산출
-- [ ] **Week 2:** 국세청 + 부동산원 수집·정제 (taxonomy 매핑 반영)
-- [ ] **Week 3:** 통합 빌드 파이프라인 + GitHub Actions 월/분기 스케줄링
+- [ ] **Week 1:** `scripts/ingest/` + `scripts/transform/` 골격 + 인구·NTS 단독 빌드 (B553077·R-ONE 슬롯은 placeholder 로 비워둠)
+- [ ] **Week 2:** B553077 / R-ONE 승인 시 ingest 실호출로 교체. taxonomy 매핑 적용해 `data/build/{지역}/{업종}.json` 첫 산출
+- [ ] **Week 3:** `.github/workflows/etl.yml` 월/분기 cron + 자동 PR 생성 워크플로 + 데이터 변경 PR 머지 → Vercel 자동 재배포 검증
 
 ---
 
@@ -85,7 +85,7 @@ LLM 으로 리포트에 "개성" 부여.
 
 | Phase | 기간 | 완료 | 진행 |
 |---|---|:---:|:---:|
-| 0 — 셋업·검증 | 1주 | 4 / 5 Day | Day 5 다음 |
+| 0 — 셋업·검증 | 1주 | **5 / 5 Day ✅** | Phase 1 진입 |
 | 1 — ETL | 2~3주 | — | 대기 |
 | 2 — 리포트 MVP | 2~3주 | — | 대기 |
 | 3 — AI 특색 | 1~2주 | — | 대기 |
