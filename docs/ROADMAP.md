@@ -22,9 +22,9 @@ Phase 0 부터 런칭(Phase 5) 까지 전체 일정. 이 파일은 매일 "Day N
 
 검증된 소스들을 주기적으로 수집·정제·빌드 산출물로 떨어뜨리는 워크플로 구축. 디렉터리·스키마는 [docs/phase0/day5-taxonomy-and-design.md](phase0/day5-taxonomy-and-design.md) 참고.
 
-- [ ] **Week 1:** `scripts/ingest/` + `scripts/transform/` 골격 + 인구·NTS 단독 빌드 (B553077·R-ONE 슬롯은 placeholder 로 비워둠)
-- [ ] **Week 2:** B553077 / R-ONE 승인 시 ingest 실호출로 교체. taxonomy 매핑 적용해 `data/build/{지역}/{업종}.json` 첫 산출
-- [ ] **Week 3:** `.github/workflows/etl.yml` 월/분기 cron + 자동 PR 생성 워크플로 + 데이터 변경 PR 머지 → Vercel 자동 재배포 검증
+- [x] **Week 1:** ingest/transform/build-data 골격 + 강남구 22개 reference 매핑 + 역삼1동×커피음료점 e2e 산출 (`data/build/서울특별시/강남구/역삼1동/cafe.json`). Phase 0 발견사항 5건 모두 반영 (10↔8 자릿수, 60초 재시도, REB 분기 fallback, 페이지네이션, 호출 카운터)
+- [ ] **Week 2:** 전국 22,000+ 행정동 × 100업종 풀스케일 빌드. NTS↔SBIZ 매핑 1% 운영자 검증 (Week 끝). reference 매핑(region-codes / reb-zone-mapping) 전국 확장
+- [ ] **Week 3:** `.github/workflows/etl.yml` 월/분기 cron + B553077 일한도(10,000) 고려한 시도별 3일 분할 + 자동 PR 생성 워크플로 + 데이터 변경 PR 머지 → Vercel 자동 재배포 검증
 
 ---
 

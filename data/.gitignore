@@ -1,0 +1,6 @@
+# 원본 다운로드 캐시는 버전 관리 X (재실행으로 복구 가능)
+raw/
+
+# reference / build 는 추적 (아래 파일 수가 많아져도 diff 로 변경 추적 가능)
+!reference/
+!build/
