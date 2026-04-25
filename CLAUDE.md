@@ -89,15 +89,15 @@
 | 행안부 주민등록 세대현황 | 🟢 | `jumin.mois.go.kr/downloadCsv.do` (statMonth), 인구·세대수·세대당 인구·성비 일괄 (Day 4 검증 완료) |
 | NTS 100대 생활업종 (15061118) | 🟢 | EUC-KR CSV 직접 다운로드 OK. 100업종 × 256시군구 × 3시점 |
 | NTS 신규사업자 월별 (15048949) | ⏳ | 개업 시계열용, 활용신청 후보 (선택) |
-| REB 층별 임대료 (15069843/838) | 🟡 | data.go.kr 메타만, 실제는 R-ONE. **R-ONE OpenAPI 별도 신청 운영자 액션 대기** |
+| REB 층별 임대료 (R-ONE OpenAPI) | 🟢 | **활용신청 승인·실호출 검증 완료 (2026-04-25)**. `REB_API_KEY` 사용. STATBL_ID `T241873134863890` (중대형상가). 분기당 ~4,270 row × 5 페이지(1,000 한도). 강남대로 1층 126.1 천원/㎡ 등 강남구 14개 상권 실측 |
 
 ### 환경변수 (`.env.local`)
 
 - `PUBLIC_DATA_API_KEY` — 공공데이터포털 일반 인증키 (15083033 odcloud / NTS / 등)
 - `SBIZ_API_KEY` — apis.data.go.kr B553077 baroApi 전용 (값은 PUBLIC_DATA_API_KEY 와 동일하지만 의미 분리)
+- `REB_API_KEY` — reb.or.kr R-ONE OpenAPI (부동산원 임대동향 등) 전용
 - `NEXT_PUBLIC_KAKAO_JS_KEY` — 카카오맵 JS 키 (클라이언트 노출 OK)
 - `ANTHROPIC_API_KEY` (추후) — Claude Haiku 4.5 호출용
-- `REB_API_KEY` (추후) — R-ONE OpenAPI 승인 후
 
 ---
 
@@ -118,7 +118,7 @@
 │   ├── fetch-sangga.ts          # 상가 API 동작 확인 (15083033 + B553077)
 │   ├── fetch-ntax.ts            # 국세청 100대 업종 CSV 다운 + 샘플 생성
 │   ├── fetch-jumin.ts           # 주민등록 인구·세대현황 CSV 다운 + 샘플 (연/월 인자)
-│   └── fetch-reb.ts             # 부동산원 경로 안내 (R-ONE 승인 후 교체 예정)
+│   └── fetch-reb.ts             # 부동산원 R-ONE OpenAPI 층별임대료 다운 (분기 인자 — 예: 202503)
 ├── docs/
 │   ├── ROADMAP.md               # Phase 0~5 전체 일정 (체크리스트)
 │   └── phase0/

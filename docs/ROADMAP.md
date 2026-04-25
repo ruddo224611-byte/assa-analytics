@@ -13,7 +13,7 @@ Phase 0 부터 런칭(Phase 5) 까지 전체 일정. 이 파일은 매일 "Day N
 - [x] **Day 1:** Next.js 초기 셋업, Vercel 배포 ([PR #1](https://github.com/ruddo224611-byte/assa-analytics/pull/1))
 - [x] **Day 2:** 상가업소 API (odcloud 15083033 + B553077) + 주민등록 인구 CSV 검증 ([PR #2](https://github.com/ruddo224611-byte/assa-analytics/pull/2))
 - [x] **Day 3:** 국세청 100대 생활업종 + 부동산원 임대동향조사 검증 + 프로젝트 문서화(CLAUDE.md / ROADMAP.md / encoding 공용 유틸)
-- [x] **Day 4:** 주민등록 세대현황 검증 완료 / 누적 종합 판정 / **B553077 활용신청 승인·실호출 검증 완료 (역삼역 500m 카페 177건 실측, 2026-04-25)** / R-ONE 활용신청은 여전히 운영자 액션 대기
+- [x] **Day 4:** 주민등록 세대현황 검증 완료 / 누적 종합 판정 / **B553077 활용신청 승인·실호출 (역삼역 500m 카페 177건, 2026-04-25)** / **R-ONE OpenAPI 활용신청 승인·실호출 (강남구 14개 상권 층별임대료, 2026-04-25 — 강남대로 1층 126.1 천원/㎡ 등)**
 - [x] **Day 5:** NTS↔SBIZ 매핑 99% 커버 + Phase 1 디렉터리·스키마·스케줄 확정 (assasup 은 업종 축 X → URL 빌더로 우회)
 
 ---
