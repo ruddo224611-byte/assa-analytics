@@ -1,27 +1,29 @@
 /**
- * 시군구 단위 batch 빌드 — 행정동 × 모든 업종 매트릭스.
+ * 시군구 단위 batch 빌드 (H 형식 — 시군구 1 파일 nested).
  *
  * 실행:
  *   npx tsx scripts/build-batch.ts --signgu 강남구
+ *   npx tsx scripts/build-batch.ts --signgu 강남구,송파구,서초구
+ *   npx tsx scripts/build-batch.ts --시도 서울특별시   # 시도 안 모든 시군구
  *   npx tsx scripts/build-batch.ts --signgu 강남구 --dry-run
  *
- * 효율 최적화 (단일 build-data 와 차이):
- *   - 행정동마다 업종 필터 없이 모든 상가 1번에 다운로드 (22 × 100 X)
- *   - reb pivot 한 번만 계산 (mergeArea 마다 X)
- *   - jumin / nts / reb raw 캐시 한 번만
+ * 출력: data/build/{시도}/{시군구}.json (시군구 1 파일에 모든 행정동 × 업종)
  *
- * Week 2 Day 1 — 강남구 22 행정동 × 99 업종 (NTS_only 통신판매업 제외) = 2,178 빌드
+ * 효율:
+ *   - 행정동마다 sbiz 1회 (업종 필터 없이)
+ *   - reb pivot 한 번만
+ *   - 행정동 단위 공통 데이터 (수요/임대료/지원사업) 1번만 저장 (중복 제거)
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { loadRegions, type RegionRow } from "./lib/region";
 import { loadTaxonomy } from "./lib/taxonomy";
 import { fetchStoresInDong, sbizMetrics, type SbizStore } from "./lib/sbiz";
-import { mergeArea } from "./transform/merge-area";
-import { defaultPeriod, previousPeriods, pivotByZoneAndFloor, type RebRow } from "./lib/reb";
-import { RAW, BUILD, monthId, slugify, buildPath } from "./lib/paths";
+import { defaultPeriod, previousPeriods, type RebRow } from "./lib/reb";
+import { RAW, BUILD, monthId, slugify } from "./lib/paths";
+import { buildSignguH } from "./transform/build-signgu-h";
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -30,73 +32,134 @@ function parseArgs() {
     return i >= 0 ? args[i + 1] : undefined;
   };
   return {
-    signgu: get("--signgu"),
+    signguList: get("--signgu")?.split(",").map((s) => s.trim()),
+    sido: get("--시도"),
     dryRun: args.includes("--dry-run"),
+    cleanup: args.includes("--cleanup"), // 기존 행정동 폴더 삭제
   };
 }
 
 function runIngest(file: string, args: string[] = []) {
   console.log(`  $ npx tsx scripts/ingest/${file} ${args.join(" ")}`);
   const r = spawnSync("npx", ["tsx", `scripts/ingest/${file}`, ...args], {
-    stdio: "inherit",
-    encoding: "utf8",
+    stdio: "inherit", encoding: "utf8",
   });
   if (r.status !== 0) throw new Error(`ingest 실패: ${file}`);
 }
 
-async function main() {
-  const t0 = Date.now();
-  const { signgu, dryRun } = parseArgs();
-  if (!signgu) throw new Error("--signgu <시군구이름> 필수");
-
-  // 1) 행정동 로드 + 필터
-  const allRegions = loadRegions();
+async function buildOneSigngu(
+  signgu: string,
+  allRegions: RegionRow[],
+  context: {
+    monthPeriod: string;
+    juminH: string; juminA: string; ntsCsv: string;
+    rebRows: RebRow[]; rebUsedPeriod: string;
+    juminBaseLabel: string; ntsBaseLabel: string; rebBaseLabel: string;
+    cleanup: boolean;
+  },
+) {
   const regions = allRegions.filter((r) => r.시군구 === signgu);
-  if (regions.length === 0) throw new Error(`region-codes.csv 에 ${signgu} 없음`);
-
-  // 2) 업종 로드 (NTS_only 제외)
+  if (regions.length === 0) {
+    console.warn(`  [skip] ${signgu}: region-codes 에 없음`);
+    return null;
+  }
   const taxonomy = loadTaxonomy().filter(
     (t) => t.type !== "NTS_only" && t.sbiz_소분류.length > 0,
   );
 
-  console.log(`\n[batch] ${signgu} — 행정동 ${regions.length}개 × 업종 ${taxonomy.length}개 = ${regions.length * taxonomy.length}건 빌드 예정`);
+  const t0 = Date.now();
+  console.log(`\n--- ${signgu} (행정동 ${regions.length} × 업종 ${taxonomy.length}) ---`);
 
-  // 3) 기준 시점
+  // 행정동별 sbiz
+  const sbizByAdong = new Map<string, SbizStore[]>();
+  for (const r of regions) {
+    const f = resolve(RAW(context.monthPeriod), `sbiz-${r.adong_sbiz_8}-all.json`);
+    let stores: SbizStore[];
+    if (existsSync(f)) {
+      stores = JSON.parse(readFileSync(f, "utf8"));
+    } else {
+      stores = await fetchStoresInDong(r.adong_sbiz_8);
+      writeFileSync(f, JSON.stringify(stores), "utf8");
+    }
+    sbizByAdong.set(r.adong_sbiz_8, stores);
+  }
+  const allCitySbiz: SbizStore[] = [];
+  for (const ss of sbizByAdong.values()) allCitySbiz.push(...ss);
+
+  // 빌드
+  const report = buildSignguH({
+    시도: regions[0].시도,
+    시군구: signgu,
+    regions,
+    taxonomy,
+    juminHouseholdCsv: context.juminH,
+    juminAgeCsv: context.juminA,
+    ntsCsv: context.ntsCsv,
+    sbizByAdong,
+    allCitySbiz,
+    rebRows: context.rebRows,
+    juminBaseLabel: context.juminBaseLabel,
+    ntsBaseLabel: context.ntsBaseLabel,
+    rebBaseLabel: context.rebBaseLabel,
+    sbizFetchedAt: new Date().toISOString(),
+  });
+
+  // 출력
+  const outDir = resolve(BUILD, slugify(regions[0].시도));
+  mkdirSync(outDir, { recursive: true });
+  const out = resolve(outDir, `${slugify(signgu)}.json`);
+  writeFileSync(out, JSON.stringify(report, null, 2), "utf8");
+  const size = (writeFileSync as unknown, // typescript trick to avoid unused
+    Buffer.byteLength(JSON.stringify(report, null, 2)) / 1024).toFixed(1);
+
+  // cleanup: 기존 행정동 폴더 삭제 (PR #13 잔재)
+  if (context.cleanup) {
+    const oldDir = resolve(outDir, slugify(signgu));
+    if (existsSync(oldDir)) {
+      rmSync(oldDir, { recursive: true, force: true });
+      console.log(`  [cleanup] 기존 ${signgu}/ 폴더 삭제`);
+    }
+  }
+
+  const t = ((Date.now() - t0) / 1000).toFixed(1);
+  const adongCount = regions.length;
+  const upjongCount = taxonomy.length;
+  console.log(`  ✓ ${signgu}: ${adongCount}동 × ${upjongCount}업종 = ${adongCount * upjongCount} 셀 → ${out.split("/").slice(-2).join("/")} (${size}KB, ${t}초)`);
+  return out;
+}
+
+async function main() {
+  const T0 = Date.now();
+  const { signguList, sido, dryRun, cleanup } = parseArgs();
+
+  const allRegions = loadRegions();
+  let targets: string[];
+  if (signguList) targets = signguList;
+  else if (sido) {
+    targets = [...new Set(allRegions.filter((r) => r.시도 === sido).map((r) => r.시군구))];
+  } else throw new Error("--signgu 또는 --시도 필수");
+
+  console.log(`[batch H] 대상 시군구: ${targets.length}개`);
+  console.log(`  ${targets.join(", ")}`);
+  console.log(`  cleanup=${cleanup} dry-run=${dryRun}`);
+
+  if (dryRun) return;
+
   const lastMonth = new Date();
   lastMonth.setMonth(lastMonth.getMonth() - 1);
   const monthPeriod = monthId(lastMonth.getFullYear(), lastMonth.getMonth() + 1);
   const quarterPeriod = defaultPeriod();
 
-  if (dryRun) {
-    console.log("\n[dry-run] 실제 빌드 안 함. 첫 5건 경로만:");
-    for (let i = 0; i < Math.min(5, regions.length); i++) {
-      const r = regions[i];
-      for (let j = 0; j < Math.min(2, taxonomy.length); j++) {
-        const u = taxonomy[j];
-        console.log(`  → ${buildPath({ 시도: r.시도, 시군구: r.시군구, 행정동: r.행정동, 업종: slugify(u.nts) })}`);
-      }
-    }
-    return;
-  }
-
-  // 4) 공유 raw 보장 (jumin / nts / reb)
-  console.log("\n[1/4] 공유 raw 캐시 보장 (jumin / nts / reb)...");
+  // 공유 raw 보장
   const juminH = resolve(RAW(monthPeriod), "jumin-household.csv");
   const juminA = resolve(RAW(monthPeriod), "jumin-age.csv");
   if (!existsSync(juminH) || !existsSync(juminA)) {
-    runIngest("ingest-jumin.ts", [
-      String(lastMonth.getFullYear()),
-      String(lastMonth.getMonth() + 1),
-    ]);
-  } else console.log("  jumin: 캐시 ✓");
+    runIngest("ingest-jumin.ts", [String(lastMonth.getFullYear()), String(lastMonth.getMonth() + 1)]);
+  }
+  const ntsCsv = resolve(RAW(monthPeriod), "nts-life100.csv");
+  if (!existsSync(ntsCsv)) runIngest("ingest-nts.ts");
 
-  const ntsCsvFile = resolve(RAW(monthPeriod), "nts-life100.csv");
-  if (!existsSync(ntsCsvFile)) runIngest("ingest-nts.ts");
-  else console.log("  nts: 캐시 ✓");
-
-  // reb fallback 4단계
-  let rebFile: string | null = null;
-  let rebUsedPeriod = quarterPeriod;
+  let rebFile: string | null = null; let rebUsedPeriod = quarterPeriod;
   for (const p of previousPeriods(quarterPeriod, 4)) {
     const f = resolve(RAW(p), "reb-중대형.json");
     if (existsSync(f)) { rebFile = f; rebUsedPeriod = p; break; }
@@ -107,106 +170,33 @@ async function main() {
       const f = resolve(RAW(p), "reb-중대형.json");
       if (existsSync(f)) { rebFile = f; rebUsedPeriod = p; break; }
     }
-  } else console.log(`  reb: 캐시 ✓ (사용 분기 ${rebUsedPeriod})`);
+  }
   if (!rebFile) throw new Error("REB 캐시 생성 실패");
 
-  // 5) 행정동별 sbiz 모든 상가 (업종 필터 없이) — 가장 큰 시간
-  console.log(`\n[2/4] 행정동 ${regions.length}개 sbiz 다운로드 (업종 필터 없이)...`);
-  const sbizByAdong = new Map<string, SbizStore[]>(); // adong_sbiz_8 → stores
-  for (const r of regions) {
-    const f = resolve(RAW(monthPeriod), `sbiz-${r.adong_sbiz_8}-all.json`);
-    let stores: SbizStore[];
-    if (existsSync(f)) {
-      stores = JSON.parse(readFileSync(f, "utf8"));
-      console.log(`  [캐시] ${r.행정동} (${r.adong_sbiz_8}): ${stores.length}건`);
-    } else {
-      console.log(`  [다운] ${r.행정동} (${r.adong_sbiz_8}) ...`);
-      stores = await fetchStoresInDong(r.adong_sbiz_8);
-      writeFileSync(f, JSON.stringify(stores), "utf8");
-      console.log(`        ${stores.length}건 저장`);
-    }
-    sbizByAdong.set(r.adong_sbiz_8, stores);
-  }
-  console.log(`  → SBIZ 호출 ${sbizMetrics.callCount}회 (재시도 ${sbizMetrics.retries})`);
+  const ctx = {
+    monthPeriod,
+    juminH: readFileSync(juminH, "utf8"),
+    juminA: readFileSync(juminA, "utf8"),
+    ntsCsv: readFileSync(ntsCsv, "utf8"),
+    rebRows: JSON.parse(readFileSync(rebFile, "utf8")) as RebRow[],
+    rebUsedPeriod,
+    juminBaseLabel: `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, "0")}`,
+    ntsBaseLabel: "2025-08",
+    rebBaseLabel: `${rebUsedPeriod.slice(0, 4)}-Q${rebUsedPeriod.slice(-1)}`,
+    cleanup: cleanup ?? false,
+  };
 
-  // 6) reb pivot 한 번만
-  console.log("\n[3/4] reb pivot 계산 (한 번만)...");
-  const rebRows = JSON.parse(readFileSync(rebFile, "utf8")) as RebRow[];
-  const rebPivot = pivotByZoneAndFloor(rebRows);
-  console.log(`  → ${rebPivot.length} (상권 × 층) 조합`);
-
-  // 7) 시군구 안 모든 stores 합치기 (거리 필터용 — 행정동 1km 외 stores 도 포함될 수 있게)
-  const allCitySbiz: SbizStore[] = [];
-  for (const stores of sbizByAdong.values()) allCitySbiz.push(...stores);
-  console.log(`  → 시군구 전체 stores: ${allCitySbiz.length.toLocaleString()}건`);
-
-  // 8) raw 한 번만 읽기
-  const juminHText = readFileSync(juminH, "utf8");
-  const juminAText = readFileSync(juminA, "utf8");
-  const ntsText = readFileSync(ntsCsvFile, "utf8");
-
-  // 9) 각 (행정동, 업종) 매트릭스 빌드
-  console.log(`\n[4/4] ${regions.length} × ${taxonomy.length} = ${regions.length * taxonomy.length}건 빌드...`);
-
-  let success = 0;
-  let skipped = 0;
-  for (const r of regions) {
-    // 행정동 중심 좌표 = 해당 동 stores 평균 (없으면 시군구 평균)
-    const myStores = sbizByAdong.get(r.adong_sbiz_8) ?? [];
-    let centerLng: number;
-    let centerLat: number;
-    if (myStores.length > 0) {
-      centerLng = myStores.reduce((a, s) => a + s.lon, 0) / myStores.length;
-      centerLat = myStores.reduce((a, s) => a + s.lat, 0) / myStores.length;
-    } else {
-      centerLng = allCitySbiz.reduce((a, s) => a + s.lon, 0) / allCitySbiz.length;
-      centerLat = allCitySbiz.reduce((a, s) => a + s.lat, 0) / allCitySbiz.length;
-    }
-
-    for (const u of taxonomy) {
-      try {
-        const merged = mergeArea({
-          region: r,
-          upjong: u,
-          centerLng,
-          centerLat,
-          juminHouseholdCsv: juminHText,
-          juminAgeCsv: juminAText,
-          ntsCsv: ntsText,
-          sbizStores: allCitySbiz, // 시군구 전체 (거리 필터로 좁힘)
-          rebPivot,
-          juminBaseLabel: `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, "0")}`,
-          ntsBaseLabel: "2025-08",
-          rebBaseLabel: `${rebUsedPeriod.slice(0, 4)}-Q${rebUsedPeriod.slice(-1)}`,
-          sbizFetchedAt: new Date().toISOString(),
-        });
-
-        const out = buildPath({
-          시도: r.시도,
-          시군구: r.시군구,
-          행정동: r.행정동,
-          업종: slugify(u.nts),
-        });
-        // 커피음료점 alias = cafe
-        const aliased = u.nts === "커피음료점"
-          ? out.replace(/\/[^/]+\.json$/, "/cafe.json")
-          : out;
-        mkdirSync(dirname(aliased), { recursive: true });
-        writeFileSync(aliased, JSON.stringify(merged, null, 2), "utf8");
-        success++;
-      } catch (e) {
-        console.warn(`  [실패] ${r.행정동} × ${u.nts}: ${(e as Error).message}`);
-        skipped++;
-      }
-    }
-    process.stdout.write(`  ${r.행정동} ✓ (누적 ${success}/${regions.length * taxonomy.length})\n`);
+  let okCount = 0;
+  for (const sg of targets) {
+    const out = await buildOneSigngu(sg, allRegions, ctx);
+    if (out) okCount++;
   }
 
-  const t = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(`\n=== batch 완료 ===`);
-  console.log(`  총 빌드: ${success.toLocaleString()}건 / 실패 ${skipped}`);
-  console.log(`  SBIZ 호출 누적: ${sbizMetrics.callCount}회 (일 한도 10,000)`);
-  console.log(`  소요 시간: ${t}초`);
+  const T = ((Date.now() - T0) / 1000).toFixed(1);
+  console.log(`\n=== batch H 완료 ===`);
+  console.log(`  성공 ${okCount}/${targets.length} 시군구`);
+  console.log(`  SBIZ 호출 누적: ${sbizMetrics.callCount}회 (재시도 ${sbizMetrics.retries})`);
+  console.log(`  소요 시간: ${T}초`);
 }
 
 main().catch((e) => {
