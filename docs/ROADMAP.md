@@ -13,7 +13,7 @@ Phase 0 부터 런칭(Phase 5) 까지 전체 일정. 이 파일은 매일 "Day N
 - [x] **Day 1:** Next.js 초기 셋업, Vercel 배포 ([PR #1](https://github.com/ruddo224611-byte/assa-analytics/pull/1))
 - [x] **Day 2:** 상가업소 API (odcloud 15083033 + B553077) + 주민등록 인구 CSV 검증 ([PR #2](https://github.com/ruddo224611-byte/assa-analytics/pull/2))
 - [x] **Day 3:** 국세청 100대 생활업종 + 부동산원 임대동향조사 검증 + 프로젝트 문서화(CLAUDE.md / ROADMAP.md / encoding 공용 유틸)
-- [ ] **Day 4:** 공단 B553077 API (승인되면 실제 호출) + 부동산원 R-ONE OpenAPI (승인되면 실제 호출) + 주민등록 세대현황 추가 검증 + 종합 판정
+- [x] **Day 4:** 주민등록 세대현황 검증 완료 / B553077·R-ONE 활용신청은 운영자 액션 대기 / 누적 종합 판정
 - [ ] **Day 5:** taxonomy 매핑 테이블 초안 (NTS 100업종 ↔ 공단 대/중/소분류 ↔ assasup 지원사업 업종 코드) + Phase 1 설계 확정
 
 ---
@@ -85,7 +85,7 @@ LLM 으로 리포트에 "개성" 부여.
 
 | Phase | 기간 | 완료 | 진행 |
 |---|---|:---:|:---:|
-| 0 — 셋업·검증 | 1주 | 3 / 5 Day | Day 4 다음 |
+| 0 — 셋업·검증 | 1주 | 4 / 5 Day | Day 5 다음 |
 | 1 — ETL | 2~3주 | — | 대기 |
 | 2 — 리포트 MVP | 2~3주 | — | 대기 |
 | 3 — AI 특색 | 1~2주 | — | 대기 |
