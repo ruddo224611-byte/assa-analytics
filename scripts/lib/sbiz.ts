@@ -41,10 +41,21 @@ async function callOnce(path: string, params: Record<string, string>) {
 /** 60초 캐시 활성화 대기 후 1회 재시도 — 활용신청 직후 흔히 발생. */
 async function callWithRetry(path: string, params: Record<string, string>) {
   let r = await callOnce(path, params);
+  // 403: 활용신청 직후 캐시 활성화 지연 (60초 대기 후 1회 재시도)
   if (r.status === 403) {
     sbizMetrics.retries++;
     console.warn(`  [sbiz] 403 — 60초 대기 후 재시도 (캐시 활성화)`);
     await sleep(60_000);
+    r = await callOnce(path, params);
+  }
+  // 429: rate limit (분당 또는 시간당 한도 초과). 60초 대기 후 최대 3회 재시도
+  let retry429 = 0;
+  while (r.status === 429 && retry429 < 3) {
+    sbizMetrics.retries++;
+    retry429++;
+    const wait = 60_000 * retry429;
+    console.warn(`  [sbiz] 429 rate limit — ${wait/1000}초 대기 후 재시도 (${retry429}/3)`);
+    await sleep(wait);
     r = await callOnce(path, params);
   }
   if (!r.ok) {
