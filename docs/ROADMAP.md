@@ -13,7 +13,7 @@ Phase 0 부터 런칭(Phase 5) 까지 전체 일정. 이 파일은 매일 "Day N
 - [x] **Day 1:** Next.js 초기 셋업, Vercel 배포 ([PR #1](https://github.com/ruddo224611-byte/assa-analytics/pull/1))
 - [x] **Day 2:** 상가업소 API (odcloud 15083033 + B553077) + 주민등록 인구 CSV 검증 ([PR #2](https://github.com/ruddo224611-byte/assa-analytics/pull/2))
 - [x] **Day 3:** 국세청 100대 생활업종 + 부동산원 임대동향조사 검증 + 프로젝트 문서화(CLAUDE.md / ROADMAP.md / encoding 공용 유틸)
-- [x] **Day 4:** 주민등록 세대현황 검증 완료 / 누적 종합 판정 / **B553077 활용신청 승인·실호출 검증 완료 (역삼역 500m 카페 177건 실측, 2026-04-25)** / R-ONE 활용신청은 여전히 운영자 액션 대기
+- [x] **Day 4:** 주민등록 세대현황 검증 완료 / 누적 종합 판정 / **B553077 활용신청 승인·실호출 (역삼역 500m 카페 177건, 2026-04-25)** / **R-ONE OpenAPI 활용신청 승인·실호출 (강남구 14개 상권 층별임대료, 2026-04-25 — 강남대로 1층 126.1 천원/㎡ 등)**
 - [x] **Day 5:** NTS↔SBIZ 매핑 99% 커버 + Phase 1 디렉터리·스키마·스케줄 확정 (assasup 은 업종 축 X → URL 빌더로 우회)
 
 ---
@@ -22,9 +22,9 @@ Phase 0 부터 런칭(Phase 5) 까지 전체 일정. 이 파일은 매일 "Day N
 
 검증된 소스들을 주기적으로 수집·정제·빌드 산출물로 떨어뜨리는 워크플로 구축. 디렉터리·스키마는 [docs/phase0/day5-taxonomy-and-design.md](phase0/day5-taxonomy-and-design.md) 참고.
 
-- [ ] **Week 1:** `scripts/ingest/` + `scripts/transform/` 골격 + 인구·NTS 단독 빌드 (B553077·R-ONE 슬롯은 placeholder 로 비워둠)
-- [ ] **Week 2:** B553077 / R-ONE 승인 시 ingest 실호출로 교체. taxonomy 매핑 적용해 `data/build/{지역}/{업종}.json` 첫 산출
-- [ ] **Week 3:** `.github/workflows/etl.yml` 월/분기 cron + 자동 PR 생성 워크플로 + 데이터 변경 PR 머지 → Vercel 자동 재배포 검증
+- [x] **Week 1:** ingest/transform/build-data 골격 + 강남구 22개 reference 매핑 + 역삼1동×커피음료점 e2e 산출 (`data/build/서울특별시/강남구/역삼1동/cafe.json`). Phase 0 발견사항 5건 모두 반영 (10↔8 자릿수, 60초 재시도, REB 분기 fallback, 페이지네이션, 호출 카운터)
+- [ ] **Week 2:** 전국 22,000+ 행정동 × 100업종 풀스케일 빌드. NTS↔SBIZ 매핑 1% 운영자 검증 (Week 끝). reference 매핑(region-codes / reb-zone-mapping) 전국 확장
+- [ ] **Week 3:** `.github/workflows/etl.yml` 월/분기 cron + B553077 일한도(10,000) 고려한 시도별 3일 분할 + 자동 PR 생성 워크플로 + 데이터 변경 PR 머지 → Vercel 자동 재배포 검증
 
 ---
 

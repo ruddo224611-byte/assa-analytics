@@ -89,15 +89,15 @@
 | 행안부 주민등록 세대현황 | 🟢 | `jumin.mois.go.kr/downloadCsv.do` (statMonth), 인구·세대수·세대당 인구·성비 일괄 (Day 4 검증 완료) |
 | NTS 100대 생활업종 (15061118) | 🟢 | EUC-KR CSV 직접 다운로드 OK. 100업종 × 256시군구 × 3시점 |
 | NTS 신규사업자 월별 (15048949) | ⏳ | 개업 시계열용, 활용신청 후보 (선택) |
-| REB 층별 임대료 (15069843/838) | 🟡 | data.go.kr 메타만, 실제는 R-ONE. **R-ONE OpenAPI 별도 신청 운영자 액션 대기** |
+| REB 층별 임대료 (R-ONE OpenAPI) | 🟢 | **활용신청 승인·실호출 검증 완료 (2026-04-25)**. `REB_API_KEY` 사용. STATBL_ID `T241873134863890` (중대형상가). 분기당 ~4,270 row × 5 페이지(1,000 한도). 강남대로 1층 126.1 천원/㎡ 등 강남구 14개 상권 실측 |
 
 ### 환경변수 (`.env.local`)
 
 - `PUBLIC_DATA_API_KEY` — 공공데이터포털 일반 인증키 (15083033 odcloud / NTS / 등)
 - `SBIZ_API_KEY` — apis.data.go.kr B553077 baroApi 전용 (값은 PUBLIC_DATA_API_KEY 와 동일하지만 의미 분리)
+- `REB_API_KEY` — reb.or.kr R-ONE OpenAPI (부동산원 임대동향 등) 전용
 - `NEXT_PUBLIC_KAKAO_JS_KEY` — 카카오맵 JS 키 (클라이언트 노출 OK)
 - `ANTHROPIC_API_KEY` (추후) — Claude Haiku 4.5 호출용
-- `REB_API_KEY` (추후) — R-ONE OpenAPI 승인 후
 
 ---
 
@@ -111,26 +111,45 @@
 │   │   └── page.tsx             # 현재 placeholder 히어로
 │   ├── tailwind.config.ts       # brand 팔레트 50~700, Pretendard fontFamily
 │   └── .env.local               # gitignored
-├── scripts/                     # 데이터 검증·ETL 스크립트 (npx tsx)
-│   ├── lib/
-│   │   ├── encoding.ts          # EUC-KR(CP949) → UTF-8 공용 유틸
-│   │   └── env.ts               # .env.local 간이 파서
-│   ├── fetch-sangga.ts          # 상가 API 동작 확인 (15083033 + B553077)
-│   ├── fetch-ntax.ts            # 국세청 100대 업종 CSV 다운 + 샘플 생성
-│   ├── fetch-jumin.ts           # 주민등록 인구·세대현황 CSV 다운 + 샘플 (연/월 인자)
-│   └── fetch-reb.ts             # 부동산원 경로 안내 (R-ONE 승인 후 교체 예정)
+├── data/                        # Phase 1 ETL 디렉터리
+│   ├── .gitignore               # raw/ 무시
+│   ├── raw/{period}/            # 원본 캐시 (gitignored)
+│   ├── reference/               # 매핑·taxonomy (committed)
+│   │   ├── sbiz-upjong-codes.csv         # 공단 SBIZ 247 소분류
+│   │   ├── taxonomy-nts-to-sbiz.csv      # NTS↔SBIZ 매핑
+│   │   ├── region-codes.csv              # 행정동 표준 코드 (Week 1: 강남구 22개)
+│   │   └── reb-zone-mapping.csv          # 행정동 → R-ONE 상권
+│   └── build/                   # 빌드 산출물 (committed)
+│       └── {시도slug}/{시군구slug}/{행정동slug}/{업종slug}.json
+├── scripts/                     # 데이터 검증·ETL (npx tsx)
+│   ├── lib/                     # 공통 라이브러리
+│   │   ├── encoding.ts          # EUC-KR(CP949) → UTF-8
+│   │   ├── env.ts               # .env.local 파서
+│   │   ├── paths.ts             # data/ 경로 + slugify
+│   │   ├── region.ts            # 행정동 코드 변환 (10↔8↔5)
+│   │   ├── sbiz.ts              # B553077 (60초 재시도, 페이지네이션)
+│   │   ├── reb.ts               # R-ONE (페이지네이션, 분기 fallback)
+│   │   ├── jumin.ts             # 행안부 CSV (인구·세대·연령)
+│   │   ├── nts.ts               # 국세청 100대 업종 CSV
+│   │   └── taxonomy.ts          # NTS↔SBIZ 매핑 로더
+│   ├── ingest/                  # 외부 → raw (CLI 진입점)
+│   │   ├── ingest-jumin.ts
+│   │   ├── ingest-sbiz.ts
+│   │   ├── ingest-nts.ts
+│   │   └── ingest-reb.ts
+│   ├── transform/               # raw → 정규화
+│   │   ├── normalize-region.ts
+│   │   ├── normalize-upjong.ts
+│   │   └── merge-area.ts        # (지역, 업종) → 단일 산출물
+│   ├── build-data.ts            # ★ Phase 1 진입점 (ingest 자동 호출 + transform + 저장)
+│   └── fetch-{sangga,ntax,jumin,reb}.ts   # (Phase 0 ad-hoc 검증 스크립트, 유지)
 ├── docs/
-│   ├── ROADMAP.md               # Phase 0~5 전체 일정 (체크리스트)
-│   └── phase0/
-│       ├── day{1..5}-*.md       # Phase 0 Day 별 검증/셋업 기록
-│       └── samples/             # 검증 샘플 + 참조 테이블 (커밋)
-│           ├── sbiz-upjong-codes.csv         # 공단 SBIZ 247 소분류 전체
-│           ├── taxonomy-nts-to-sbiz.csv      # NTS↔SBIZ 매핑 (커버 99%)
-│           ├── ntax-life100-sample.csv
-│           ├── jumin-sample.csv (연령별)
-│           ├── jumin-household-sample.csv (세대수)
-│           ├── sangga-sample.json
-│           └── rent-sample.csv (placeholder)
+│   ├── ROADMAP.md               # Phase 0~5 전체 일정
+│   ├── phase0/
+│   │   ├── day{1..5}-*.md       # Phase 0 Day 별 기록
+│   │   └── samples/             # Phase 0 검증 샘플
+│   └── phase1/
+│       └── week{1..3}.md        # Phase 1 Week 별 기록
 ├── CLAUDE.md                    # ← 이 파일
 └── README.md
 ```
