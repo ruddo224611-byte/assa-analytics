@@ -48,6 +48,7 @@ function runIngest(file: string, args: string[] = []) {
 }
 
 async function buildOneSigngu(
+  sido: string,
   signgu: string,
   allRegions: RegionRow[],
   context: {
@@ -58,9 +59,10 @@ async function buildOneSigngu(
     cleanup: boolean;
   },
 ) {
-  const regions = allRegions.filter((r) => r.시군구 === signgu);
+  // 시도 + 시군구 둘 다 매칭 (같은 시군구명이 여러 시도에 존재 가능 — 부산남구/대구남구 등)
+  const regions = allRegions.filter((r) => r.시도 === sido && r.시군구 === signgu);
   if (regions.length === 0) {
-    console.warn(`  [skip] ${signgu}: region-codes 에 없음`);
+    console.warn(`  [skip] ${sido} ${signgu}: region-codes 에 없음`);
     return null;
   }
   const taxonomy = loadTaxonomy().filter(
@@ -133,14 +135,26 @@ async function main() {
   const { signguList, sido, dryRun, cleanup } = parseArgs();
 
   const allRegions = loadRegions();
-  let targets: string[];
-  if (signguList) targets = signguList;
-  else if (sido) {
-    targets = [...new Set(allRegions.filter((r) => r.시도 === sido).map((r) => r.시군구))];
+  // (시도, 시군구) 튜플 list
+  let targets: { sido: string; signgu: string }[];
+  if (sido) {
+    const ss = [...new Set(allRegions.filter((r) => r.시도 === sido).map((r) => r.시군구))];
+    targets = ss.map((sg) => ({ sido, signgu: sg }));
+  } else if (signguList) {
+    // --signgu 는 시도 정보 없으니, 매칭되는 모든 시도/시군구 조합 다 포함
+    targets = [];
+    for (const sg of signguList) {
+      const matches = allRegions
+        .filter((r) => r.시군구 === sg)
+        .map((r) => ({ sido: r.시도, signgu: sg }));
+      const uniq = Array.from(new Set(matches.map((m) => `${m.sido}|${m.signgu}`)))
+        .map((k) => { const [s, g] = k.split("|"); return { sido: s, signgu: g }; });
+      targets.push(...uniq);
+    }
   } else throw new Error("--signgu 또는 --시도 필수");
 
-  console.log(`[batch H] 대상 시군구: ${targets.length}개`);
-  console.log(`  ${targets.join(", ")}`);
+  console.log(`[batch H] 대상 (시도,시군구): ${targets.length}개`);
+  console.log(`  ${targets.map((t) => `${t.sido.replace(/(특별시|광역시|특별자치시|특별자치도|도)$/, '').trim() || t.sido}/${t.signgu}`).join(", ")}`);
   console.log(`  cleanup=${cleanup} dry-run=${dryRun}`);
 
   if (dryRun) return;
@@ -187,8 +201,8 @@ async function main() {
   };
 
   let okCount = 0;
-  for (const sg of targets) {
-    const out = await buildOneSigngu(sg, allRegions, ctx);
+  for (const t of targets) {
+    const out = await buildOneSigngu(t.sido, t.signgu, allRegions, ctx);
     if (out) okCount++;
   }
 
