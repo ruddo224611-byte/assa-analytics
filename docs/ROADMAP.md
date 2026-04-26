@@ -29,7 +29,7 @@ Phase 0 부터 런칭(Phase 5) 까지 전체 일정. 이 파일은 매일 "Day N
   - [x] **Day 3:** 광역시 7개 51 시군구 + 시군구명 충돌 fix (PR #15)
   - [x] **Day 4:** 도 5개 97 시군구 + SBIZ 429 자동 재시도 (PR #16)
   - [x] **Day 5:** 도 4개 82 시군구 + 전국 완성 ([docs/phase1/week2-day5.md](phase1/week2-day5.md), PR #17)
-- [ ] **Week 3:** `.github/workflows/etl.yml` 월/분기 cron + B553077 일한도(10,000) 고려한 시도별 3일 분할 + 자동 PR 생성 워크플로 + 데이터 변경 PR 머지 → Vercel 자동 재배포 검증
+- [x] **Week 3:** `.github/workflows/etl.yml` 신규 ([docs/phase1/week3.md](phase1/week3.md)). 월 cron (jumin/nts) + 분기 cron (sbiz/reb 캐시 리셋) + 수동 trigger. 시도별 sequential. 자동 PR 생성 (peter-evans/create-pull-request). **운영자 액션: GitHub Secrets 4개 등록 (PR 본문에 안내)**
 
 ---
 
@@ -91,7 +91,7 @@ LLM 으로 리포트에 "개성" 부여.
 | Phase | 기간 | 완료 | 진행 |
 |---|---|:---:|:---:|
 | 0 — 셋업·검증 | 1주 | **5 / 5 Day ✅** | Phase 1 진입 |
-| 1 — ETL | 2~3주 | 2 / 3 Week | Week 3 cron 다음 |
+| 1 — ETL | 2~3주 | **3 / 3 Week ✅** | Phase 2 진입 |
 | 2 — 리포트 MVP | 2~3주 | — | 대기 |
 | 3 — AI 특색 | 1~2주 | — | 대기 |
 | 4 — 신뢰도 UI | 1주 | — | 대기 |
