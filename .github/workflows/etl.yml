@@ -1,0 +1,160 @@
+name: ETL — 공공데이터 자동 갱신
+
+# 트리거:
+#   - 매월 5일 06:00 KST (UTC 21:00 of day 4): jumin/nts 월 갱신 + 풀빌드
+#   - 매분기 15일 08:00 KST (UTC 23:00 of day 14, 1·4·7·10월): SBIZ/REB 캐시 리셋 + 풀빌드
+#   - 수동 (workflow_dispatch): 시도 필터·캐시 리셋 옵션
+on:
+  schedule:
+    - cron: '0 21 4 * *'              # 매월 5일 06:00 KST
+    - cron: '0 23 14 1,4,7,10 *'      # 매분기 15일 08:00 KST
+  workflow_dispatch:
+    inputs:
+      sido_filter:
+        description: '특정 시도만 빌드 (쉼표 구분, 예: "서울특별시,부산광역시"). 비우면 전국'
+        required: false
+        type: string
+      reset_quarterly_cache:
+        description: 'SBIZ/REB 캐시 리셋 (분기 갱신용)'
+        required: false
+        type: boolean
+        default: false
+
+# 동시 실행 방지 (cron + 수동 겹치면 후자 취소)
+concurrency:
+  group: etl
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ETL 빌드
+    runs-on: ubuntu-latest
+    timeout-minutes: 240    # 4시간 (Background stuck 학습 — 시도별 분할로 충분)
+    permissions:
+      contents: write       # PR 만들 때 write 필요
+      pull-requests: write
+    env:
+      TZ: Asia/Seoul
+    steps:
+      - name: 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Node.js 20 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: data/raw 캐시 복원 (월 트리거는 sbiz/reb 캐시 활용)
+        id: cache-raw
+        uses: actions/cache/restore@v4
+        with:
+          path: data/raw
+          key: etl-raw-${{ github.run_id }}
+          restore-keys: |
+            etl-raw-
+
+      - name: 분기 캐시 리셋 (분기 cron 또는 수동 옵션)
+        if: |
+          (github.event_name == 'schedule' && github.event.schedule == '0 23 14 1,4,7,10 *')
+          || (github.event_name == 'workflow_dispatch' && github.event.inputs.reset_quarterly_cache == 'true')
+        run: |
+          echo "분기 갱신 — SBIZ/REB 캐시 삭제"
+          rm -f data/raw/*/sbiz-*-all.json data/raw/*/reb-*.json
+          ls data/raw/ 2>/dev/null || echo "(empty)"
+
+      - name: .env.local 생성 (GitHub Secrets 사용)
+        run: |
+          mkdir -p web
+          cat > web/.env.local <<'ENVEOF'
+          PUBLIC_DATA_API_KEY=${{ secrets.PUBLIC_DATA_API_KEY }}
+          SBIZ_API_KEY=${{ secrets.SBIZ_API_KEY }}
+          REB_API_KEY=${{ secrets.REB_API_KEY }}
+          NEXT_PUBLIC_KAKAO_JS_KEY=${{ secrets.NEXT_PUBLIC_KAKAO_JS_KEY }}
+          ENVEOF
+          # 검증 (값은 출력 X, 키 이름만)
+          grep -oE '^[A-Z_]+' web/.env.local || true
+
+      - name: Reference 갱신 (서울 + 광역시 + 도)
+        run: |
+          npx --yes tsx scripts/build-reference-seoul.ts
+          npx --yes tsx scripts/build-reference-metrocities.ts
+          npx --yes tsx scripts/build-reference-provinces.ts
+
+      - name: 시도별 풀빌드 (시도별 분할 — Week 2 의 background stuck 학습 반영)
+        run: |
+          if [ -n "${{ github.event.inputs.sido_filter }}" ]; then
+            SIDO_LIST="${{ github.event.inputs.sido_filter }}"
+            echo "수동 trigger — 시도 필터: $SIDO_LIST"
+            IFS=',' read -ra SIDOS <<< "$SIDO_LIST"
+          else
+            SIDOS=(서울특별시 부산광역시 대구광역시 인천광역시 광주광역시 대전광역시 울산광역시 세종특별자치시 경기도 강원특별자치도 충청북도 충청남도 전북특별자치도 전라남도 경상북도 경상남도 제주특별자치도)
+          fi
+          for SIDO in "${SIDOS[@]}"; do
+            echo ""
+            echo "===== $SIDO ====="
+            npx --yes tsx scripts/build-batch.ts --시도 "$SIDO"
+          done
+          echo ""
+          echo "===== 모든 시도 빌드 완료 ====="
+
+      - name: 빌드 통계 출력
+        run: |
+          echo "## ETL 빌드 통계" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| 시도 | 시군구 | 디스크 |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---:|---:|" >> $GITHUB_STEP_SUMMARY
+          for SIDO in $(ls data/build/); do
+            CNT=$(ls "data/build/$SIDO/"*.json 2>/dev/null | wc -l | tr -d ' ')
+            SIZE=$(du -sh "data/build/$SIDO/" 2>/dev/null | cut -f1)
+            echo "| $SIDO | $CNT | $SIZE |" >> $GITHUB_STEP_SUMMARY
+          done
+          TOTAL=$(find data/build -name "*.json" | wc -l | tr -d ' ')
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**전국 합계: $TOTAL 시군구 / $(du -sh data/build | cut -f1)**" >> $GITHUB_STEP_SUMMARY
+
+      - name: data/raw 캐시 저장
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data/raw
+          key: etl-raw-${{ github.run_id }}
+
+      - name: .env.local 삭제 (PR 에 포함 안 되도록)
+        if: always()
+        run: rm -f web/.env.local
+
+      - name: 변경 사항 자동 PR 생성
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: |
+            [자동] ETL 데이터 갱신 (${{ github.event_name }}, run #${{ github.run_number }})
+          title: "[자동] ETL 데이터 갱신 — ${{ github.event_name }} #${{ github.run_number }}"
+          body: |
+            ## 자동 생성 PR — GitHub Actions ETL workflow
+
+            **트리거:** `${{ github.event_name }}`
+            **Workflow run:** #${{ github.run_number }} (${{ github.run_id }})
+            **시각 (KST):** 워크플로 실행 시점
+
+            ### 변경 내용
+            공공데이터 (jumin / nts / sbiz / reb) 갱신 결과 `data/build/` 의 시군구 JSON 파일이 변경됨.
+            머지하면 Vercel 자동 재배포 → 사이트에 새 데이터 반영.
+
+            ### 검토 가이드
+            - **PR diff 가 시군구 단위로 표시됨.** 25-255 파일 수준 (변경량에 따라)
+            - 한 시군구 파일 안의 변경: `meta.기준일` / `meta.신뢰도.캐시업데이트` 외 수치 변동 (인구 / 경쟁 / 임대료)
+            - **이상 수치 발견 시 머지 거부** — 그러면 데이터는 그대로 유지
+
+            ### 실패 시
+            - GitHub Actions 로그 확인
+            - 가장 흔한 실패: SBIZ rate limit (자동 60→120→180초 재시도 적용됨)
+            - 수동 재실행: Actions 탭 → ETL workflow → "Run workflow"
+
+            🤖 Generated by GitHub Actions
+          branch: auto/etl-${{ github.run_number }}
+          base: main
+          delete-branch: true
+          add-paths: |
+            data/build/**
+            data/reference/**
