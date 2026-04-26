@@ -37,3 +37,4 @@ public/data
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+public/region-index.json
