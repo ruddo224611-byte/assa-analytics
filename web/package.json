@@ -3,13 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "predev": "node scripts/copy-data.mjs",
+    "predev": "node scripts/copy-data.mjs && node scripts/build-region-index.mjs",
     "dev": "next dev",
-    "prebuild": "node scripts/copy-data.mjs",
+    "prebuild": "node scripts/copy-data.mjs && node scripts/build-region-index.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "copy-data": "node scripts/copy-data.mjs"
+    "copy-data": "node scripts/copy-data.mjs",
+    "build-region-index": "node scripts/build-region-index.mjs"
   },
   "dependencies": {
     "react": "^18",
