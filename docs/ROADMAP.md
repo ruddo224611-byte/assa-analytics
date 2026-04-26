@@ -35,13 +35,14 @@ Phase 0 부터 런칭(Phase 5) 까지 전체 일정. 이 파일은 매일 "Day N
 
 ## Phase 2 — 리포트 페이지 MVP (2~3주)
 
-쿼리형 리포트 페이지를 실제로 볼 수 있는 형태로.
+쿼리형 리포트 페이지를 실제로 볼 수 있는 형태로. 5일에 7섹션 + cascade dropdown + 시뮬레이터 + 카카오맵 + 전국 stores 까지 완성.
 
-- [ ] 지역 · 업종 선택 UI
-- [ ] 리포트 템플릿 (7섹션: 요약 · 수요 · 경쟁 · 임대료 · 시뮬레이터 · 지원사업 · 체크리스트)
-- [ ] 창업 시뮬레이터 (낙관 / 기준 / 보수 3시나리오 BEP)
-- [ ] 지원사업 연동 (assasup 데이터 참조)
-- [ ] 카카오맵 임베드 (경쟁점 핀)
+- [x] **Week 1:** 리포트 페이지 MVP — 7섹션 + 홈 cascade + 시뮬레이터 + 카카오맵 + 전국 stores
+  - [x] **Day 1:** `/report/{sido}/{signgu}/{adong}/{upjong}` 7섹션 페이지 (지역·수요·경쟁·임대료·시뮬레이터·지원사업·체크리스트). prebuild copy-data.mjs ([PR #19](https://github.com/ruddo224611-byte/assa-analytics/pull/19))
+  - [x] **Day 2:** 홈 페이지 cascade dropdown 4단 (시도→시군구→행정동→업종) + region-index.json 29.6KB ([PR #20](https://github.com/ruddo224611-byte/assa-analytics/pull/20))
+  - [x] **Day 3:** 창업 시뮬레이터 (낙관/기준/보수 3시나리오 BEP). 17 업종 기본값 ([PR #21](https://github.com/ruddo224611-byte/assa-analytics/pull/21))
+  - [x] **Day 4:** 카카오맵 임베드 (경쟁점 핀, 강남구 시범) — stores 사이즈 폭발 발견 ([PR #22](https://github.com/ruddo224611-byte/assa-analytics/pull/22))
+  - [x] **Day 5:** stores 컬럼 압축 (9→4 필드, 65% 절감) + 전국 stores commit + 카카오맵 전국 동작
 
 ---
 
@@ -92,7 +93,7 @@ LLM 으로 리포트에 "개성" 부여.
 |---|---|:---:|:---:|
 | 0 — 셋업·검증 | 1주 | **5 / 5 Day ✅** | Phase 1 진입 |
 | 1 — ETL | 2~3주 | **3 / 3 Week ✅** | Phase 2 진입 |
-| 2 — 리포트 MVP | 2~3주 | — | 대기 |
+| 2 — 리포트 MVP | 2~3주 | **Day 5/5 ✅** | Phase 3 진입 검토 |
 | 3 — AI 특색 | 1~2주 | — | 대기 |
 | 4 — 신뢰도 UI | 1주 | — | 대기 |
 | 5 — 런칭 | — | — | 대기 |

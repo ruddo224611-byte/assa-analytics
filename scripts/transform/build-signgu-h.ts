@@ -97,7 +97,12 @@ export interface SignguHReport {
 
 /**
  * 카카오맵 핀용 stores 분리 출력 — 시군구 1 파일 nested 와 별도.
- * 핵심 필드만 (좌표·이름·업종 코드). 1MB 시군구 메인 파일에 추가하면 4배 부담 → 분리.
+ *
+ * Phase 2 Day 5 컬럼 압축:
+ *   - 9 필드 → 4 필드 (name, sclsCd, lng, lat) — 50% 절감
+ *   - 좌표 5자리 (약 1m 정밀도) — 추가 ~16% 절감
+ *   - branch/sclsNm/addr/floor 는 Phase 3+ 에서 핀 클릭 모달 도입 시 복원
+ *   - 강남구 14.6MB → ~5MB 예상 → 전국 ~1.3GB (commit 가능)
  */
 export interface SignguStoresFile {
   meta: {
@@ -105,18 +110,13 @@ export interface SignguStoresFile {
     시군구: string;
     캐시업데이트: string;
     총_stores: number;
+    스키마: "v2-compact"; // Day 5 컬럼 압축 표시
   };
   stores: {
-    name: string;       // bizesNm
-    branch?: string;    // brchNm (지점명)
-    sclsCd: string;     // indsSclsCd (업종 소분류 — 필터용)
-    sclsNm: string;     // indsSclsNm
-    adongCd: string;    // 8자리
-    adongNm: string;
-    addr: string;       // rdnmAdr (도로명) 또는 lnoAdr
-    floor?: string;     // flrNo
-    lng: number;
-    lat: number;
+    name: string;    // bizesNm (지점명 포함, " " 구분)
+    sclsCd: string;  // indsSclsCd (업종 소분류 — 필터용)
+    lng: number;     // 5자리 round
+    lat: number;     // 5자리 round
   }[];
 }
 
@@ -131,18 +131,13 @@ export function buildStoresFile(
       시군구,
       캐시업데이트: new Date().toISOString(),
       총_stores: allCitySbiz.length,
+      스키마: "v2-compact",
     },
     stores: allCitySbiz.map((s) => ({
-      name: s.bizesNm,
-      branch: s.brchNm || undefined,
+      name: s.brchNm ? `${s.bizesNm} ${s.brchNm}` : s.bizesNm,
       sclsCd: s.indsSclsCd,
-      sclsNm: s.indsSclsNm,
-      adongCd: s.adongCd,
-      adongNm: s.adongNm,
-      addr: (s.rdnmAdr as string) || (s.lnoAdr as string) || "",
-      floor: (s.flrNo as string) || undefined,
-      lng: s.lon,
-      lat: s.lat,
+      lng: Math.round(s.lon * 1e5) / 1e5,
+      lat: Math.round(s.lat * 1e5) / 1e5,
     })),
   };
 }
