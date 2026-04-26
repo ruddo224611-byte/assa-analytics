@@ -17,13 +17,10 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import Script from "next/script";
 
+// Day 5 컬럼 압축 (v2-compact): 4 필드만
 interface Store {
-  name: string;
-  branch?: string;
-  sclsCd: string;
-  sclsNm: string;
-  addr: string;
-  floor?: string;
+  name: string;     // bizesNm (지점명 포함)
+  sclsCd: string;   // 업종 소분류 (필터용)
   lng: number;
   lat: number;
 }
@@ -112,7 +109,7 @@ export default function CompetitionMap({ centerLng, centerLat, 시도, 시군구
         new window.kakao.maps.Marker({
           map,
           position: new window.kakao.maps.LatLng(s.lat, s.lng),
-          title: s.name + (s.branch ? ` ${s.branch}` : ""),
+          title: s.name,
         });
       });
     });
