@@ -1,15 +1,15 @@
 /**
- * 창업 시뮬레이터 — BEP (손익분기점) 3시나리오 계산.
+ * 창업 시뮬레이터 — BEP (손익분기점) 계산.
+ *
+ * Phase 3 Day 2 변경: 3시나리오 (낙관/기준/보수) → 단일 결과 (운영자 피드백).
+ * 사용자가 직접 입력한 값 그대로 계산해서 결과 보여줌.
  *
  * 입력:
  *   - rentKrwPerM2K (천원/㎡, 임대료. 1층 기준 자동 적용)
- *   - 평수, 객단가, 일평균 손님 수 (사용자 입력 또는 업종별 기본값)
- *   - 업종별 재료비율 (자동)
- *   - 인건비 (사용자 입력)
+ *   - 평수, 객단가, 일평균 손님 수, 인건비 (사용자 입력)
  *
  * 출력:
- *   - 3 시나리오 (낙관 / 기준 / 보수): 매출 / 변동비 / 고정비 / 영업이익 / BEP
- *   - 일평균 손님 수: 낙관 = ×1.5, 기준 = 입력값, 보수 = ×0.6
+ *   - 단일 시나리오: 매출 / 변동비 / 고정비 / 영업이익 / BEP
  *
  * 가정 (참고용 강조):
  *   - 1평 = 3.305785㎡
@@ -59,14 +59,14 @@ export interface SimulatorInput {
   rentKrwPerM2K: number | null; // 천원/㎡ (1층 기준)
   평수: number;
   객단가: number;
-  일평균손님_기준: number;
+  일평균손님: number; // 사용자 입력값 그대로
   인건비: number; // 월 (원). 직원 1인 기준
   재료비율: number; // 0~1
 }
 
-export interface SimulatorScenario {
-  label: "낙관" | "기준" | "보수";
-  multiplier: number;
+export interface SimulatorResult {
+  월세: number;
+  고정비_breakdown: { 월세: number; 인건비: number; 기타: number };
   일평균손님: number;
   월매출: number;
   월변동비: number;
@@ -77,20 +77,8 @@ export interface SimulatorScenario {
   달성률_pct: number; // 매출 / BEP * 100
 }
 
-export interface SimulatorResult {
-  월세: number;
-  고정비_breakdown: { 월세: number; 인건비: number; 기타: number };
-  scenarios: SimulatorScenario[];
-}
-
-const SCENARIO_MULTIPLIERS: Record<SimulatorScenario["label"], number> = {
-  낙관: 1.5,
-  기준: 1.0,
-  보수: 0.6,
-};
-
 export function calculate(input: SimulatorInput): SimulatorResult {
-  const { rentKrwPerM2K, 평수, 객단가, 일평균손님_기준, 인건비, 재료비율 } = input;
+  const { rentKrwPerM2K, 평수, 객단가, 일평균손님, 인건비, 재료비율 } = input;
 
   // 월 임대료 (원)
   const 월세 = rentKrwPerM2K
@@ -99,35 +87,24 @@ export function calculate(input: SimulatorInput): SimulatorResult {
   const 기타고정비 = Math.round((월세 + 인건비) * 0.15); // 관리비·공과금·소모품 등 추정
   const 월고정비 = 월세 + 인건비 + 기타고정비;
 
-  const scenarios = (Object.keys(SCENARIO_MULTIPLIERS) as SimulatorScenario["label"][]).map(
-    (label) => {
-      const mult = SCENARIO_MULTIPLIERS[label];
-      const 일평균손님 = Math.round(일평균손님_기준 * mult);
-      const 월매출 = 일평균손님 * 객단가 * 30;
-      const 월변동비 = Math.round(월매출 * 재료비율);
-      const 월영업이익 = 월매출 - 월변동비 - 월고정비;
-      const BEP_매출 = Math.round(월고정비 / (1 - 재료비율));
-      const BEP_손님 = Math.round(BEP_매출 / (객단가 * 30));
-      const 달성률_pct = 월매출 > 0 ? (월매출 / BEP_매출) * 100 : 0;
-      return {
-        label,
-        multiplier: mult,
-        일평균손님,
-        월매출,
-        월변동비,
-        월고정비,
-        월영업이익,
-        BEP_매출,
-        BEP_손님,
-        달성률_pct,
-      };
-    },
-  );
+  const 월매출 = 일평균손님 * 객단가 * 30;
+  const 월변동비 = Math.round(월매출 * 재료비율);
+  const 월영업이익 = 월매출 - 월변동비 - 월고정비;
+  const BEP_매출 = Math.round(월고정비 / (1 - 재료비율));
+  const BEP_손님 = Math.round(BEP_매출 / (객단가 * 30));
+  const 달성률_pct = 월매출 > 0 ? (월매출 / BEP_매출) * 100 : 0;
 
   return {
     월세,
     고정비_breakdown: { 월세, 인건비, 기타: 기타고정비 },
-    scenarios,
+    일평균손님,
+    월매출,
+    월변동비,
+    월고정비,
+    월영업이익,
+    BEP_매출,
+    BEP_손님,
+    달성률_pct,
   };
 }
 

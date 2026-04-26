@@ -3,19 +3,14 @@
 /**
  * 창업 시뮬레이터 — 리포트 #5 섹션.
  *
- * 핵심 입력 3개 (평수 / 객단가 / 일평균 손님 — 기준 시나리오) +
- * 인건비 1개 = 사용자가 4개만 입력하면 즉시 3시나리오 BEP 계산.
+ * Phase 3 Day 2 변경: 3시나리오 (낙관/기준/보수) → 단일 결과 (운영자 피드백).
+ * 사용자가 입력한 값 그대로 계산해서 결과 보여줌.
  *
- * 임대료는 1층 데이터 자동. 다른 층은 Day 4+ 에서 선택 옵션.
+ * 핵심 입력 4개 (평수 / 객단가 / 일평균 손님 / 인건비) → 즉시 BEP 계산.
  */
 
 import { useState, useMemo } from "react";
-import {
-  calculate,
-  fmtKrw,
-  getUpjongDefaults,
-  type SimulatorScenario,
-} from "@/lib/simulator";
+import { calculate, fmtKrw, getUpjongDefaults } from "@/lib/simulator";
 
 interface Props {
   업종: string;
@@ -35,7 +30,7 @@ export default function Simulator({ 업종, rentKrwPerM2K }: Props) {
         rentKrwPerM2K,
         평수,
         객단가,
-        일평균손님_기준: 손님,
+        일평균손님: 손님,
         인건비,
         재료비율: defaults.재료비율,
       }),
@@ -52,34 +47,62 @@ export default function Simulator({ 업종, rentKrwPerM2K }: Props) {
     );
   }
 
+  const profitable = result.월영업이익 > 0;
+
   return (
     <div className="space-y-5">
       {/* 입력 */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <NumInput label="평수" value={평수} onChange={set평수} suffix="평" min={5} step={5} />
         <NumInput label="객단가" value={객단가} onChange={set객단가} suffix="원" min={1000} step={500} />
-        <NumInput label="일 손님 (기준)" value={손님} onChange={set손님} suffix="명" min={1} step={5} />
+        <NumInput label="일평균 손님" value={손님} onChange={set손님} suffix="명" min={1} step={5} />
         <NumInput label="인건비 (월)" value={인건비} onChange={set인건비} suffix="원" min={0} step={100_000} />
       </div>
 
       {/* 가정 안내 */}
       <details className="text-xs text-slate-500">
         <summary className="cursor-pointer hover:text-slate-700">
-          가정 자세히 보기
+          계산 가정 자세히 보기
         </summary>
         <ul className="mt-2 space-y-1 pl-4 list-disc">
           <li>임대료: R-ONE 중대형 1층 평균 ({rentKrwPerM2K?.toFixed(1)} 천원/㎡) × 평수 환산</li>
           <li>업종 기본 재료비율: {(defaults.재료비율 * 100).toFixed(0)}% (업종별 표준 추정)</li>
           <li>기타 고정비: (월세 + 인건비) × 15% (관리비·공과금·소모품 추정)</li>
-          <li>3시나리오: 일 손님 = 기준 × 1.5(낙관) / 1.0(기준) / 0.6(보수)</li>
+          <li>월 매출 = 일평균 손님 × 객단가 × 30일</li>
         </ul>
       </details>
 
-      {/* 결과 표 */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {result.scenarios.map((s) => (
-          <ScenarioCard key={s.label} s={s} />
-        ))}
+      {/* 결과 카드 (단일) */}
+      <div className={`rounded-xl border-2 p-5 ${
+        profitable ? "border-brand-200 bg-brand-50/50" : "border-rose-200 bg-rose-50"
+      }`}>
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <ResultStat label="월 매출" value={`${fmtKrw(result.월매출)}원`} />
+          <ResultStat
+            label="월 영업이익"
+            value={`${profitable ? "" : "−"}${fmtKrw(Math.abs(result.월영업이익))}원`}
+            highlight={profitable ? "brand" : "rose"}
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-200/60 text-sm">
+          <div>
+            <div className="text-slate-500 text-xs mb-0.5">손익분기점 (BEP)</div>
+            <div className="text-slate-700 font-medium">
+              월 매출 {fmtKrw(result.BEP_매출)}원 / 일 손님 {result.BEP_손님}명
+            </div>
+          </div>
+          <div>
+            <div className="text-slate-500 text-xs mb-0.5">BEP 대비 달성률</div>
+            <div className={`font-medium ${profitable ? "text-brand-700" : "text-rose-700"}`}>
+              {result.달성률_pct.toFixed(0)}%
+            </div>
+          </div>
+        </div>
+        {!profitable && (
+          <p className="mt-3 text-xs text-rose-700">
+            ⚠ 적자 — 손님 수·객단가·평수 조정해서 흑자 조건 찾아보세요.
+          </p>
+        )}
       </div>
 
       {/* 고정비 breakdown */}
@@ -99,43 +122,18 @@ export default function Simulator({ 업종, rentKrwPerM2K }: Props) {
   );
 }
 
-function ScenarioCard({ s }: { s: SimulatorScenario }) {
-  const profitable = s.월영업이익 > 0;
-  const colorMap = {
-    낙관: profitable ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50",
-    기준: profitable ? "border-brand-200 bg-brand-50" : "border-amber-200 bg-amber-50",
-    보수: profitable ? "border-slate-200 bg-slate-50" : "border-rose-200 bg-rose-50",
-  };
-  const labelColor = {
-    낙관: "text-emerald-700",
-    기준: "text-brand-700",
-    보수: profitable ? "text-slate-700" : "text-rose-700",
-  };
+function ResultStat({
+  label, value, highlight,
+}: { label: string; value: string; highlight?: "brand" | "rose" }) {
+  const color = highlight === "brand"
+    ? "text-brand-700"
+    : highlight === "rose"
+      ? "text-rose-700"
+      : "text-slate-900";
   return (
-    <div className={`rounded-lg border ${colorMap[s.label]} p-4`}>
-      <div className="flex items-baseline justify-between mb-2">
-        <span className={`text-sm font-bold ${labelColor[s.label]}`}>{s.label}</span>
-        <span className="text-xs text-slate-500">일 {s.일평균손님}명</span>
-      </div>
-      <div className="space-y-1.5 text-sm">
-        <div className="flex justify-between">
-          <span className="text-slate-500">월 매출</span>
-          <span className="font-medium text-slate-900">{fmtKrw(s.월매출)}원</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-slate-500">월 영업이익</span>
-          <span className={`font-bold ${profitable ? "text-slate-900" : "text-rose-600"}`}>
-            {profitable ? "" : "−"}{fmtKrw(Math.abs(s.월영업이익))}원
-          </span>
-        </div>
-        <div className="flex justify-between text-xs pt-1 border-t border-slate-200/60">
-          <span className="text-slate-400">BEP 손님</span>
-          <span className="text-slate-600">일 {s.BEP_손님}명 ({s.달성률_pct.toFixed(0)}%)</span>
-        </div>
-      </div>
-      {!profitable && (
-        <p className="mt-2 text-[11px] text-rose-600 font-medium">⚠ 적자 — 손님 수·객단가 조정 필요</p>
-      )}
+    <div>
+      <div className="text-xs text-slate-500 mb-1">{label}</div>
+      <div className={`text-2xl font-bold ${color}`}>{value}</div>
     </div>
   );
 }

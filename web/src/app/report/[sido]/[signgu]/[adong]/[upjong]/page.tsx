@@ -1,17 +1,20 @@
 /**
- * 리포트 페이지 — Phase 2 Day 1 첫 페이지.
+ * 리포트 페이지.
  *
  * URL: /report/{시도}/{시군구}/{행정동}/{업종}
  * 예시: /report/서울특별시/강남구/역삼1동/커피음료점
  *
- * 7섹션:
- *   1. 헤더 (지역·업종·기준일·신뢰도)
- *   2. 수요 (인구·세대·세대당·연령대)
- *   3. 경쟁 (반경 500m/1km · 시군구 · YoY)
- *   4. 임대료 (상권·층별)
- *   5. 시뮬레이터 (Day 2 이상 구현)
- *   6. 지원사업 (URL 빌더)
- *   7. 체크리스트 (현장 체크)
+ * Phase 3 Day 2 변경 (운영자 피드백):
+ *   - 지원사업 / 체크리스트 / AI 후보 업종 섹션 제거
+ *   - 시뮬레이터 3시나리오 → 단일 결과
+ *   - 점수 옆 한국어 풀이 추가
+ *
+ * 5섹션:
+ *   1. 헤더 + AI 한 줄 요약 + 점수
+ *   2. 거주 수요 (인구·세대·연령대)
+ *   3. 경쟁 (반경 + 카카오맵)
+ *   4. 임대료 (층별 표)
+ *   5. 시뮬레이터 (단일 결과)
  */
 
 import { headers } from "next/headers";
@@ -97,9 +100,9 @@ async function loadSigngu(시도: string, 시군구: string): Promise<SignguData
 interface LLMEntry {
   score: { 수요: number; 경쟁: number; 임대료: number; 종합: number; 톤: string };
   llm: {
-    summary: string;
     alias: string;
-    candidates: { name: string; reason: string }[];
+    summary: string;
+    // candidates 는 Day 2 에 제거됨 (구버전 캐시 호환을 위해 optional 로 둘 수도 있지만 표시는 안 함)
   };
 }
 interface LLMCacheFile {
@@ -204,41 +207,27 @@ export default async function ReportPage({ params }: PageProps) {
           </div>
         ) : null}
 
-        {/* 점수 4종 */}
+        {/* 점수 4종 — Day 2: 한국어 풀이 추가 */}
         <div className="grid grid-cols-4 gap-2 mb-4">
-          <ScoreBadge label="수요" value={score.수요} />
-          <ScoreBadge label="경쟁" value={score.경쟁} />
-          <ScoreBadge label="임대료" value={score.임대료} />
-          <ScoreBadge label="종합" value={score.종합} highlight={score.톤} />
+          <ScoreBadge label="수요" sub="사람 많은지" value={score.수요} />
+          <ScoreBadge label="경쟁" sub="비어있는지" value={score.경쟁} />
+          <ScoreBadge label="임대료" sub="저렴한지" value={score.임대료} />
+          <ScoreBadge label="종합" sub="전체 평가" value={score.종합} highlight={score.톤} />
         </div>
+        <p className="text-[11px] text-slate-400 -mt-2 mb-4 text-center">
+          ※ 100점에 가까울수록 창업에 유리. 50점 = 평균
+        </p>
 
         {/* 한 줄 요약 (LLM) */}
         {aiEntry?.llm.summary ? (
-          <p className="text-sm sm:text-base text-slate-700 leading-relaxed">
+          <p className="text-sm sm:text-base text-slate-700 leading-relaxed whitespace-pre-line">
             {aiEntry.llm.summary}
           </p>
         ) : (
           <p className="text-xs text-slate-400 italic">
-            AI 한 줄 요약 준비 중 (시범 운영 — 강남구 일부 행정동만 우선 적용)
+            AI 분석 준비 중 (시범 운영 — 강남구 우선 적용)
           </p>
         )}
-
-        {/* 후보 업종 3개 */}
-        {aiEntry?.llm.candidates && aiEntry.llm.candidates.length > 0 ? (
-          <div className="mt-4 pt-4 border-t border-brand-100">
-            <div className="text-xs font-medium text-slate-500 mb-2">
-              💡 이 자리에 어울리는 다른 업종 (참고)
-            </div>
-            <ul className="space-y-2">
-              {aiEntry.llm.candidates.map((c, i) => (
-                <li key={i} className="text-sm">
-                  <span className="font-semibold text-slate-800">{c.name}</span>
-                  <span className="text-slate-500"> — {c.reason}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
 
         <p className="mt-4 text-[11px] text-slate-400">
           ※ 점수·요약은 데이터 기반 참고용. 단정적 판정 X. 현장 확인 필수.
@@ -334,48 +323,11 @@ export default async function ReportPage({ params }: PageProps) {
       </Section>
 
       {/* ======== 5. 시뮬레이터 ======== */}
-      <Section title="🧮 창업 시뮬레이터" subtitle="평수·객단가·일 손님(기준) 입력 → 낙관/기준/보수 3시나리오 BEP 자동">
+      <Section title="🧮 창업 시뮬레이터" subtitle="평수·객단가·일 손님·인건비 입력 → BEP 즉시 계산">
         <Simulator
           업종={업종}
           rentKrwPerM2K={adong.임대료.층별?.["1층"]?.임대료_천원_m2 ?? null}
         />
-      </Section>
-
-      {/* ======== 6. 지원사업 ======== */}
-      <Section title="🎁 지원사업 연계" subtitle={`${시군구} 자영업 대상 정부·지자체 지원사업`}>
-        <div className="space-y-2">
-          {adong.지원사업_links.map((link) => (
-            <a
-              key={link.label}
-              href={link.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm hover:border-brand-300 hover:bg-brand-50 transition-colors"
-            >
-              <span className="text-slate-700">{link.label}</span>
-              <span className="text-brand-600">assasup.com →</span>
-            </a>
-          ))}
-        </div>
-      </Section>
-
-      {/* ======== 7. 현장 체크리스트 ======== */}
-      <Section title="📋 현장 체크리스트" subtitle="데이터에 안 잡히는 거 — 발품으로 확인하세요">
-        <ul className="space-y-2 text-sm text-slate-700">
-          {[
-            "출퇴근 시간대 유동 인구 — 직접 가서 30분 관찰",
-            "주말 vs 평일 분위기 차이",
-            "주차 가능 여부 + 인근 주차장 시세",
-            "건물 외관 / 입구 가시성 / 간판 자리",
-            "임대 조건 (보증금·관리비·권리금)",
-            "주변 비어있는 매장 수 (= 상권 활력 신호)",
-          ].map((item, i) => (
-            <li key={i} className="flex items-start gap-2">
-              <span className="mt-1 inline-block w-1.5 h-1.5 rounded-full bg-brand-400 flex-shrink-0" />
-              <span>{item}</span>
-            </li>
-          ))}
-        </ul>
       </Section>
 
       {/* ======== 푸터 (필수 고정문) ======== */}
@@ -419,18 +371,19 @@ function Stat({ label, value, unit, highlight }: { label: string; value: string;
   );
 }
 
-function ScoreBadge({ label, value, highlight }: { label: string; value: number; highlight?: string }) {
+function ScoreBadge({ label, sub, value, highlight }: { label: string; sub?: string; value: number; highlight?: string }) {
   // 점수 색상: 65+ 파랑, 35-64 회색, 35 미만 amber
   const color =
     value >= 65 ? "bg-brand-100 text-brand-700"
       : value >= 35 ? "bg-slate-100 text-slate-700"
       : "bg-amber-100 text-amber-700";
   return (
-    <div className={`rounded-lg ${color} px-3 py-2 text-center`}>
-      <div className="text-[10px] opacity-75">{label}</div>
-      <div className="text-lg font-bold mt-0.5">{value}</div>
+    <div className={`rounded-lg ${color} px-2 py-2 text-center`}>
+      <div className="text-[11px] font-medium">{label}</div>
+      {sub && <div className="text-[9px] opacity-70 leading-tight">{sub}</div>}
+      <div className="text-xl font-bold mt-1">{value}</div>
       {highlight && (
-        <div className="text-[9px] mt-0.5 font-medium uppercase tracking-wide">
+        <div className="text-[10px] mt-0.5 font-semibold">
           {highlight}
         </div>
       )}
