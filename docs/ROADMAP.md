@@ -23,10 +23,12 @@ Phase 0 부터 런칭(Phase 5) 까지 전체 일정. 이 파일은 매일 "Day N
 검증된 소스들을 주기적으로 수집·정제·빌드 산출물로 떨어뜨리는 워크플로 구축. 디렉터리·스키마는 [docs/phase0/day5-taxonomy-and-design.md](phase0/day5-taxonomy-and-design.md) 참고.
 
 - [x] **Week 1:** ingest/transform/build-data 골격 + 강남구 22개 reference 매핑 + 역삼1동×커피음료점 e2e 산출 (`data/build/서울특별시/강남구/역삼1동/cafe.json`). Phase 0 발견사항 5건 모두 반영 (10↔8 자릿수, 60초 재시도, REB 분기 fallback, 페이지네이션, 호출 카운터)
-- [ ] **Week 2:** 전국 22,000+ 행정동 × 100업종 풀스케일 빌드. NTS↔SBIZ 매핑 1% 운영자 검증 (Week 끝). reference 매핑(region-codes / reb-zone-mapping) 전국 확장
-  - [x] **Day 1:** 강남구 22 × 99 = 2,178건 batch 빌드 ([docs/phase1/week2-day1.md](phase1/week2-day1.md)). SBIZ 76회 / 165초. 디스크 전략 결정 필요
-  - [x] **Day 2:** H 형식 (시군구 1 파일 nested) 적용으로 디스크 87% 압축. 서울 25구 풀빌드 ([docs/phase1/week2-day2.md](phase1/week2-day2.md)). 42,273 셀 / 25 파일 / 20MB / SBIZ 672회 / 24분
-  - [ ] **Day 3-5:** 광역시 + 도 reference 자동 생성 + 풀빌드 (SBIZ ~7,500회 추정). 250 시군구 ≈ 250MB
+- [x] **Week 2:** 전국 17 시도 / 255 시군구 / 169 MB / ~356,000 셀 풀빌드 완성
+  - [x] **Day 1:** 강남구 e2e 검증 — 디스크 전략 결정 필요 발견
+  - [x] **Day 2:** H 형식 도입 (시군구 1 파일) — 87% 압축 + 서울 25구 (PR #14)
+  - [x] **Day 3:** 광역시 7개 51 시군구 + 시군구명 충돌 fix (PR #15)
+  - [x] **Day 4:** 도 5개 97 시군구 + SBIZ 429 자동 재시도 (PR #16)
+  - [x] **Day 5:** 도 4개 82 시군구 + 전국 완성 ([docs/phase1/week2-day5.md](phase1/week2-day5.md), PR #17)
 - [ ] **Week 3:** `.github/workflows/etl.yml` 월/분기 cron + B553077 일한도(10,000) 고려한 시도별 3일 분할 + 자동 PR 생성 워크플로 + 데이터 변경 PR 머지 → Vercel 자동 재배포 검증
 
 ---
@@ -89,7 +91,7 @@ LLM 으로 리포트에 "개성" 부여.
 | Phase | 기간 | 완료 | 진행 |
 |---|---|:---:|:---:|
 | 0 — 셋업·검증 | 1주 | **5 / 5 Day ✅** | Phase 1 진입 |
-| 1 — ETL | 2~3주 | — | 대기 |
+| 1 — ETL | 2~3주 | 2 / 3 Week | Week 3 cron 다음 |
 | 2 — 리포트 MVP | 2~3주 | — | 대기 |
 | 3 — AI 특색 | 1~2주 | — | 대기 |
 | 4 — 신뢰도 UI | 1주 | — | 대기 |
