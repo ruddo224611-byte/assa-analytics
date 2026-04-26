@@ -31,6 +31,7 @@ interface Props {
   시도: string;
   시군구: string;
   sbizCodes: string[];
+  sbizCodeToName: Record<string, string>; // sclsCd → sclsNm 매핑 (말풍선 표시용)
 }
 
 declare global {
@@ -51,7 +52,7 @@ function distMeters(lng1: number, lat1: number, lng2: number, lat2: number) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-export default function CompetitionMap({ centerLng, centerLat, 시도, 시군구, sbizCodes }: Props) {
+export default function CompetitionMap({ centerLng, centerLat, 시도, 시군구, sbizCodes, sbizCodeToName }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [stores, setStores] = useState<Store[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -118,10 +119,20 @@ export default function CompetitionMap({ centerLng, centerLat, 시도, 시군구
           position: new window.kakao.maps.LatLng(s.lat, s.lng),
           title: s.name, // hover tooltip 도 유지 (데스크톱)
         });
-        // 클릭 시 말풍선 — 한국어 상호명 escape
-        const safe = s.name.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        // 클릭 시 말풍선 — 상호명 + 업종 소분류명 (escape)
+        const esc = (t: string) =>
+          t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const safeName = esc(s.name);
+        const safeScls = esc(sbizCodeToName[s.sclsCd] ?? "");
+        const subline = safeScls
+          ? `<div style="margin-top:2px;font-size:11px;color:#64748b;">${safeScls}</div>`
+          : "";
         const info = new window.kakao.maps.InfoWindow({
-          content: `<div style="padding:6px 10px;font-size:13px;color:#0f172a;font-family:Pretendard,sans-serif;white-space:nowrap;">${safe}</div>`,
+          content:
+            `<div style="padding:6px 10px;font-family:Pretendard,sans-serif;white-space:nowrap;">` +
+            `<div style="font-size:13px;font-weight:600;color:#0f172a;">${safeName}</div>` +
+            subline +
+            `</div>`,
           removable: true, // x 버튼 표시
         });
         window.kakao.maps.event.addListener(marker, "click", () => {
@@ -131,7 +142,7 @@ export default function CompetitionMap({ centerLng, centerLat, 시도, 시군구
         });
       });
     });
-  }, [sdkReady, stores, filtered, centerLng, centerLat, radius]);
+  }, [sdkReady, stores, filtered, centerLng, centerLat, radius, sbizCodeToName]);
 
   const apikey = process.env.NEXT_PUBLIC_KAKAO_JS_KEY;
   if (!apikey) {

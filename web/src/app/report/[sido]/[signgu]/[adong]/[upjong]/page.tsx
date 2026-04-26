@@ -189,6 +189,9 @@ export default async function ReportPage({ params }: PageProps) {
           시도={시도}
           시군구={시군구}
           sbizCodes={u.sbiz_codes}
+          sbizCodeToName={Object.fromEntries(
+            u.sbiz_codes.map((c, i) => [c, u.sbiz_names[i] ?? ""])
+          )}
         />
       </Section>
 
