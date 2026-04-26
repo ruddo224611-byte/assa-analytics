@@ -14,8 +14,7 @@
  *   7. 체크리스트 (현장 체크)
  */
 
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import Simulator from "./Simulator";
 import CompetitionMap from "./CompetitionMap";
@@ -68,10 +67,25 @@ interface SignguData {
 
 // ============ 데이터 로딩 ============
 
+/**
+ * 시군구 데이터 로드.
+ *
+ * Day 6 hotfix: fs.readFile → fetch 패턴으로 변경.
+ *   - Vercel lambda 가 server function bundle 에 public/ 자산을 포함 안 함
+ *     → process.cwd() + "public/data" 경로가 production 에서 not found
+ *   - 같은 도메인의 public 정적 자산을 fetch 으로 읽으면 dev/prod 모두 동작
+ *   - ISR (revalidate 1시간) 로 lambda 호출당 한 번만 fetch
+ */
 async function loadSigngu(시도: string, 시군구: string): Promise<SignguData | null> {
-  const filePath = resolve(process.cwd(), "public", "data", 시도, `${시군구}.json`);
+  const h = headers();
+  const host = h.get("host") ?? "localhost:3000";
+  const proto =
+    h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  const url = `${proto}://${host}/data/${encodeURIComponent(시도)}/${encodeURIComponent(시군구)}.json`;
   try {
-    return JSON.parse(readFileSync(filePath, "utf8")) as SignguData;
+    const r = await fetch(url, { next: { revalidate: 3600 } });
+    if (!r.ok) return null;
+    return (await r.json()) as SignguData;
   } catch {
     return null;
   }
