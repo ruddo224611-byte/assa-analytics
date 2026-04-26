@@ -104,12 +104,30 @@ export default function CompetitionMap({ centerLng, centerLat, 시도, 시군구
         fillColor: "#3b82f6",
         fillOpacity: 0.1,
       });
-      // 마커
+      // 한 번에 하나만 열리는 InfoWindow (말풍선)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let openInfo: any = null;
+      // 빈 곳 클릭 시 닫기
+      window.kakao.maps.event.addListener(map, "click", () => {
+        if (openInfo) { openInfo.close(); openInfo = null; }
+      });
+      // 마커 + InfoWindow
       filtered.forEach((s) => {
-        new window.kakao.maps.Marker({
+        const marker = new window.kakao.maps.Marker({
           map,
           position: new window.kakao.maps.LatLng(s.lat, s.lng),
-          title: s.name,
+          title: s.name, // hover tooltip 도 유지 (데스크톱)
+        });
+        // 클릭 시 말풍선 — 한국어 상호명 escape
+        const safe = s.name.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const info = new window.kakao.maps.InfoWindow({
+          content: `<div style="padding:6px 10px;font-size:13px;color:#0f172a;font-family:Pretendard,sans-serif;white-space:nowrap;">${safe}</div>`,
+          removable: true, // x 버튼 표시
+        });
+        window.kakao.maps.event.addListener(marker, "click", () => {
+          if (openInfo) openInfo.close();
+          info.open(map, marker);
+          openInfo = info;
         });
       });
     });
@@ -170,7 +188,7 @@ export default function CompetitionMap({ centerLng, centerLat, 시도, 시군구
           )}
         </div>
         <p className="text-[11px] text-slate-400">
-          ※ 핀 위치는 공단 B553077 의 행정동 단위 좌표. 실제 매장 위치와 미세 차이 가능. 클릭 시 상호명 (브라우저 기본 tooltip).
+          ※ 핀 위치는 공단 B553077 의 행정동 단위 좌표. 실제 매장 위치와 미세 차이 가능. 핀 클릭 시 상호명 말풍선.
         </p>
       </div>
     </>
