@@ -31,6 +31,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# 빌드 시 ../data/build 에서 복사된 data (재현 가능, repo 에 X)
+public/data
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
