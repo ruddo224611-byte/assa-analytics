@@ -18,6 +18,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import Simulator from "./Simulator";
 import CompetitionMap from "./CompetitionMap";
+import { calculateScore } from "@/lib/score";
 
 // ============ 데이터 형식 (Phase 1 build-signgu-h.ts 와 동기화) ============
 
@@ -91,6 +92,36 @@ async function loadSigngu(시도: string, 시군구: string): Promise<SignguData
   }
 }
 
+// ============ LLM 캐시 로딩 (Phase 3) ============
+
+interface LLMEntry {
+  score: { 수요: number; 경쟁: number; 임대료: number; 종합: number; 톤: string };
+  llm: {
+    summary: string;
+    alias: string;
+    candidates: { name: string; reason: string }[];
+  };
+}
+interface LLMCacheFile {
+  meta: { 시도: string; 시군구: string; 캐시업데이트: string };
+  행정동: Record<string, { 업종별: Record<string, LLMEntry> }>;
+}
+
+async function loadLLM(시도: string, 시군구: string): Promise<LLMCacheFile | null> {
+  const h = headers();
+  const host = h.get("host") ?? "localhost:3000";
+  const proto =
+    h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  const url = `${proto}://${host}/data/${encodeURIComponent(시도)}/${encodeURIComponent(시군구)}-llm.json`;
+  try {
+    const r = await fetch(url, { next: { revalidate: 3600 } });
+    if (!r.ok) return null;
+    return (await r.json()) as LLMCacheFile;
+  } catch {
+    return null;
+  }
+}
+
 // ============ 페이지 ============
 
 interface PageProps {
@@ -112,6 +143,15 @@ export default async function ReportPage({ params }: PageProps) {
 
   const u = adong.업종별[업종];
   if (!u) notFound();
+
+  // Phase 3: 룰 엔진 점수 (항상 즉시 계산) + LLM 캐시 (있으면 표시)
+  const score = calculateScore({
+    수요: adong.수요,
+    경쟁: u.경쟁,
+    임대료: adong.임대료,
+  });
+  const llmCache = await loadLLM(시도, 시군구);
+  const aiEntry = llmCache?.행정동?.[행정동]?.업종별?.[업종];
 
   const fmt = (n: number | null | undefined) =>
     n == null ? "—" : Number(n).toLocaleString("ko-KR");
@@ -149,6 +189,61 @@ export default async function ReportPage({ params }: PageProps) {
           ))}
         </div>
       </header>
+
+      {/* ======== AI 한 줄 요약 (Phase 3) — 헤더 바로 아래 ======== */}
+      <section className="card p-5 sm:p-6 mb-6 bg-gradient-to-br from-brand-50 to-white border-brand-100">
+        {/* 별명 */}
+        {aiEntry?.llm.alias ? (
+          <div className="mb-3">
+            <span className="inline-block text-[11px] font-medium text-brand-600 bg-brand-100 px-2 py-1 rounded">
+              상권 한 줄
+            </span>
+            <h2 className="mt-2 text-lg sm:text-xl font-bold text-slate-900">
+              &ldquo;{aiEntry.llm.alias}&rdquo;
+            </h2>
+          </div>
+        ) : null}
+
+        {/* 점수 4종 */}
+        <div className="grid grid-cols-4 gap-2 mb-4">
+          <ScoreBadge label="수요" value={score.수요} />
+          <ScoreBadge label="경쟁" value={score.경쟁} />
+          <ScoreBadge label="임대료" value={score.임대료} />
+          <ScoreBadge label="종합" value={score.종합} highlight={score.톤} />
+        </div>
+
+        {/* 한 줄 요약 (LLM) */}
+        {aiEntry?.llm.summary ? (
+          <p className="text-sm sm:text-base text-slate-700 leading-relaxed">
+            {aiEntry.llm.summary}
+          </p>
+        ) : (
+          <p className="text-xs text-slate-400 italic">
+            AI 한 줄 요약 준비 중 (시범 운영 — 강남구 일부 행정동만 우선 적용)
+          </p>
+        )}
+
+        {/* 후보 업종 3개 */}
+        {aiEntry?.llm.candidates && aiEntry.llm.candidates.length > 0 ? (
+          <div className="mt-4 pt-4 border-t border-brand-100">
+            <div className="text-xs font-medium text-slate-500 mb-2">
+              💡 이 자리에 어울리는 다른 업종 (참고)
+            </div>
+            <ul className="space-y-2">
+              {aiEntry.llm.candidates.map((c, i) => (
+                <li key={i} className="text-sm">
+                  <span className="font-semibold text-slate-800">{c.name}</span>
+                  <span className="text-slate-500"> — {c.reason}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        <p className="mt-4 text-[11px] text-slate-400">
+          ※ 점수·요약은 데이터 기반 참고용. 단정적 판정 X. 현장 확인 필수.
+        </p>
+      </section>
 
       {/* ======== 2. 수요 ======== */}
       <Section title="🧑‍🤝‍🧑 거주 수요" subtitle={`행정동 단위 (출처: 행안부 주민등록)`}>
@@ -316,6 +411,25 @@ function Stat({ label, value, unit, highlight }: { label: string; value: string;
       </div>
       {highlight && (
         <div className="text-[10px] text-brand-700 mt-1 font-medium">{highlight}</div>
+      )}
+    </div>
+  );
+}
+
+function ScoreBadge({ label, value, highlight }: { label: string; value: number; highlight?: string }) {
+  // 점수 색상: 65+ 파랑, 35-64 회색, 35 미만 amber
+  const color =
+    value >= 65 ? "bg-brand-100 text-brand-700"
+      : value >= 35 ? "bg-slate-100 text-slate-700"
+      : "bg-amber-100 text-amber-700";
+  return (
+    <div className={`rounded-lg ${color} px-3 py-2 text-center`}>
+      <div className="text-[10px] opacity-75">{label}</div>
+      <div className="text-lg font-bold mt-0.5">{value}</div>
+      {highlight && (
+        <div className="text-[9px] mt-0.5 font-medium uppercase tracking-wide">
+          {highlight}
+        </div>
       )}
     </div>
   );
