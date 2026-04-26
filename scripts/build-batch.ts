@@ -23,7 +23,7 @@ import { loadTaxonomy } from "./lib/taxonomy";
 import { fetchStoresInDong, sbizMetrics, type SbizStore } from "./lib/sbiz";
 import { defaultPeriod, previousPeriods, type RebRow } from "./lib/reb";
 import { RAW, BUILD, monthId, slugify } from "./lib/paths";
-import { buildSignguH } from "./transform/build-signgu-h";
+import { buildSignguH, buildStoresFile } from "./transform/build-signgu-h";
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -106,13 +106,18 @@ async function buildOneSigngu(
     sbizFetchedAt: new Date().toISOString(),
   });
 
-  // 출력
+  // 출력 (메인 시군구 파일)
   const outDir = resolve(BUILD, slugify(regions[0].시도));
   mkdirSync(outDir, { recursive: true });
   const out = resolve(outDir, `${slugify(signgu)}.json`);
   writeFileSync(out, JSON.stringify(report, null, 2), "utf8");
-  const size = (writeFileSync as unknown, // typescript trick to avoid unused
-    Buffer.byteLength(JSON.stringify(report, null, 2)) / 1024).toFixed(1);
+  const size = (Buffer.byteLength(JSON.stringify(report, null, 2)) / 1024).toFixed(1);
+
+  // 추가 출력 (카카오맵용 stores 분리 파일 — Phase 2 Day 4 신규)
+  const storesFile = buildStoresFile(regions[0].시도, signgu, allCitySbiz);
+  const outStores = resolve(outDir, `${slugify(signgu)}-stores.json`);
+  writeFileSync(outStores, JSON.stringify(storesFile), "utf8"); // pretty-print 안 함 (압축)
+  const storesSize = (Buffer.byteLength(JSON.stringify(storesFile)) / 1024).toFixed(1);
 
   // cleanup: 기존 행정동 폴더 삭제 (PR #13 잔재)
   if (context.cleanup) {
@@ -126,7 +131,7 @@ async function buildOneSigngu(
   const t = ((Date.now() - t0) / 1000).toFixed(1);
   const adongCount = regions.length;
   const upjongCount = taxonomy.length;
-  console.log(`  ✓ ${signgu}: ${adongCount}동 × ${upjongCount}업종 = ${adongCount * upjongCount} 셀 → ${out.split("/").slice(-2).join("/")} (${size}KB, ${t}초)`);
+  console.log(`  ✓ ${signgu}: ${adongCount}동 × ${upjongCount}업종 = ${adongCount * upjongCount} 셀 → ${out.split("/").slice(-2).join("/")} (${size}KB, ${t}초) + stores ${allCitySbiz.length}건 (${storesSize}KB)`);
   return out;
 }
 

@@ -95,6 +95,58 @@ export interface SignguHReport {
   행정동: Record<string, AdongData>;
 }
 
+/**
+ * 카카오맵 핀용 stores 분리 출력 — 시군구 1 파일 nested 와 별도.
+ * 핵심 필드만 (좌표·이름·업종 코드). 1MB 시군구 메인 파일에 추가하면 4배 부담 → 분리.
+ */
+export interface SignguStoresFile {
+  meta: {
+    시도: string;
+    시군구: string;
+    캐시업데이트: string;
+    총_stores: number;
+  };
+  stores: {
+    name: string;       // bizesNm
+    branch?: string;    // brchNm (지점명)
+    sclsCd: string;     // indsSclsCd (업종 소분류 — 필터용)
+    sclsNm: string;     // indsSclsNm
+    adongCd: string;    // 8자리
+    adongNm: string;
+    addr: string;       // rdnmAdr (도로명) 또는 lnoAdr
+    floor?: string;     // flrNo
+    lng: number;
+    lat: number;
+  }[];
+}
+
+export function buildStoresFile(
+  시도: string,
+  시군구: string,
+  allCitySbiz: SbizStore[],
+): SignguStoresFile {
+  return {
+    meta: {
+      시도,
+      시군구,
+      캐시업데이트: new Date().toISOString(),
+      총_stores: allCitySbiz.length,
+    },
+    stores: allCitySbiz.map((s) => ({
+      name: s.bizesNm,
+      branch: s.brchNm || undefined,
+      sclsCd: s.indsSclsCd,
+      sclsNm: s.indsSclsNm,
+      adongCd: s.adongCd,
+      adongNm: s.adongNm,
+      addr: (s.rdnmAdr as string) || (s.lnoAdr as string) || "",
+      floor: (s.flrNo as string) || undefined,
+      lng: s.lon,
+      lat: s.lat,
+    })),
+  };
+}
+
 interface AdongData {
   지역: {
     행정동: string;
