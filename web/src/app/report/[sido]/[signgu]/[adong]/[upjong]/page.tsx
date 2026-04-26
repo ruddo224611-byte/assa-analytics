@@ -18,6 +18,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { notFound } from "next/navigation";
 import Simulator from "./Simulator";
+import CompetitionMap from "./CompetitionMap";
 
 // ============ 데이터 형식 (Phase 1 build-signgu-h.ts 와 동기화) ============
 
@@ -164,9 +165,17 @@ export default async function ReportPage({ params }: PageProps) {
                   ? (u.경쟁.시군구_YoY_pct > 0 ? "증가 추세" : u.경쟁.시군구_YoY_pct < -3 ? "빠르게 감소" : "안정")
                   : undefined} />
         </div>
-        <p className="mt-4 text-xs text-slate-500">
-          반경 데이터는 행정동 중심 좌표 기준. 정확한 위치는 카카오맵 임베드 (Phase 2 다음 작업) 에서.
+        <p className="mt-4 mb-4 text-xs text-slate-500">
+          반경 카운트는 행정동 중심 좌표 기준. 아래 지도에서 실제 핀 위치 확인 가능.
         </p>
+        {/* 카카오맵 (Day 4 신규) */}
+        <CompetitionMap
+          centerLng={adong.지역.중심좌표.lng}
+          centerLat={adong.지역.중심좌표.lat}
+          시도={시도}
+          시군구={시군구}
+          sbizCodes={u.sbiz_codes}
+        />
       </Section>
 
       {/* ======== 4. 임대료 ======== */}

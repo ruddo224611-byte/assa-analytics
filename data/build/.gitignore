@@ -1,0 +1,8 @@
+# 카카오맵용 stores 파일 — 시군구당 ~14MB (전국 ~3.6GB). git 에서 제외.
+# Day 4 시범: 강남구만 commit (예외).
+# Day 5+ 디스크 전략 결정 후 처리:
+#   - 옵션 A: ETL workflow 에서 별도 storage (Vercel KV/R2)
+#   - 옵션 B: 컬럼 압축으로 사이즈 1/3
+#   - 옵션 C: API endpoint 로 server-side 필터
+*-stores.json
+!강남구-stores.json
