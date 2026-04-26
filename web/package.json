@@ -3,10 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/copy-data.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/copy-data.mjs",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "copy-data": "node scripts/copy-data.mjs"
   },
   "dependencies": {
     "react": "^18",
