@@ -17,6 +17,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { notFound } from "next/navigation";
+import Simulator from "./Simulator";
 
 // ============ 데이터 형식 (Phase 1 build-signgu-h.ts 와 동기화) ============
 
@@ -211,12 +212,12 @@ export default async function ReportPage({ params }: PageProps) {
         </p>
       </Section>
 
-      {/* ======== 5. 시뮬레이터 (placeholder) ======== */}
-      <Section title="🧮 창업 시뮬레이터" subtitle="낙관 / 기준 / 보수 3시나리오 BEP">
-        <div className="rounded-xl border-2 border-dashed border-slate-200 px-4 py-8 text-center">
-          <p className="text-slate-400 text-sm">Day 2 이상에서 구현 예정</p>
-          <p className="text-slate-500 text-xs mt-1">월세·인건비·매출 입력 → 손익 분기점 자동 계산</p>
-        </div>
+      {/* ======== 5. 시뮬레이터 ======== */}
+      <Section title="🧮 창업 시뮬레이터" subtitle="평수·객단가·일 손님(기준) 입력 → 낙관/기준/보수 3시나리오 BEP 자동">
+        <Simulator
+          업종={업종}
+          rentKrwPerM2K={adong.임대료.층별?.["1층"]?.임대료_천원_m2 ?? null}
+        />
       </Section>
 
       {/* ======== 6. 지원사업 ======== */}
