@@ -12,8 +12,9 @@
  *   - 모바일 고려: select 박스 충분히 크게
  */
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { searchUpjong } from "@/lib/upjong-aliases";
 
 export interface RegionIndex {
   시도: { name: string; 시군구: { name: string; 행정동: string[] }[] }[];
@@ -89,17 +90,12 @@ export default function HomeForm({ index }: { index: RegionIndex }) {
         </select>
       </Field>
 
-      <Field label="업종">
-        <select
-          className={selectCls}
+      <Field label="업종 (검색 또는 선택)">
+        <UpjongCombobox
           value={upjong}
-          onChange={(e) => setUpjong(e.target.value)}
-        >
-          <option value="">업종 선택 ({index.업종.length}개)</option>
-          {index.업종.map((u) => (
-            <option key={u} value={u}>{u}</option>
-          ))}
-        </select>
+          onChange={setUpjong}
+          options={index.업종}
+        />
       </Field>
 
       <div className="flex flex-col sm:flex-row gap-3 pt-2">
@@ -139,5 +135,108 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="text-sm font-medium text-slate-700 mb-1.5 block">{label}</span>
       {children}
     </label>
+  );
+}
+
+/**
+ * 업종 검색 + 선택 combobox.
+ * - 텍스트 입력 → 별칭/정식명/substring 매칭 (upjong-aliases.ts)
+ * - 화살표/엔터로 선택, 클릭으로 선택, blur 시 닫힘
+ */
+function UpjongCombobox({
+  value, onChange, options,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [highlightIdx, setHighlightIdx] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // value 가 외부에서 set 되면 query 동기화
+  useEffect(() => {
+    if (value && !open) setQuery(value);
+  }, [value, open]);
+
+  // outside click → 닫기
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const results = useMemo(() => {
+    if (!query.trim()) return options.slice(0, 8); // 빈 입력 → 처음 8개
+    return searchUpjong(query, options, 8);
+  }, [query, options]);
+
+  function pick(u: string) {
+    onChange(u);
+    setQuery(u);
+    setOpen(false);
+    setHighlightIdx(0);
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+          setHighlightIdx(0);
+          if (e.target.value === "") onChange("");
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setOpen(true);
+            setHighlightIdx((i) => Math.min(i + 1, results.length - 1));
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setHighlightIdx((i) => Math.max(i - 1, 0));
+          } else if (e.key === "Enter" && open && results[highlightIdx]) {
+            e.preventDefault();
+            pick(results[highlightIdx]);
+          } else if (e.key === "Escape") {
+            setOpen(false);
+          }
+        }}
+        placeholder="업종 검색 (예: 카페, 치킨, 헬스장)"
+        className={selectCls}
+        autoComplete="off"
+      />
+      {open && results.length > 0 && (
+        <ul className="absolute left-0 right-0 mt-1 max-h-64 overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg z-10">
+          {results.map((u, i) => (
+            <li
+              key={u}
+              onMouseDown={(e) => { e.preventDefault(); pick(u); }}
+              onMouseEnter={() => setHighlightIdx(i)}
+              className={`px-4 py-2.5 cursor-pointer text-sm ${
+                i === highlightIdx
+                  ? "bg-brand-50 text-brand-700 font-medium"
+                  : "text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              {u}
+            </li>
+          ))}
+        </ul>
+      )}
+      {open && query.trim() && results.length === 0 && (
+        <div className="absolute left-0 right-0 mt-1 rounded-lg border border-slate-200 bg-white shadow-lg z-10 px-4 py-3 text-sm text-slate-500">
+          매칭 업종 없음 — 다른 키워드 (예: 카페, 분식, 미용실)
+        </div>
+      )}
+    </div>
   );
 }
