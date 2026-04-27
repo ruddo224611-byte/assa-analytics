@@ -17,6 +17,7 @@
  *   5. 시뮬레이터 (단일 결과)
  */
 
+import { Suspense } from "react";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import Simulator from "./Simulator";
@@ -219,15 +220,15 @@ export default async function ReportPage({ params }: PageProps) {
           ※ <strong className="text-slate-500">{시군구} 안에서</strong> 상대 위치. 100 = {시군구} 1위, 50 = 평균, 0 = 꼴찌.
         </p>
 
-        {/* 한 줄 요약 (LLM) */}
+        {/* 한 줄 요약 (LLM) — file cache 있으면 즉시, 없으면 on-demand (Suspense lazy) */}
         {aiEntry?.llm.summary ? (
           <p className="text-base sm:text-lg text-slate-700 leading-relaxed whitespace-pre-line">
             {aiEntry.llm.summary}
           </p>
         ) : (
-          <p className="text-sm text-slate-400 italic">
-            AI 분석 준비 중 (시범 운영 — 강남구 우선 적용)
-          </p>
+          <Suspense fallback={<AILoadingFallback />}>
+            <OnDemandAI 시도={시도} 시군구={시군구} 행정동={행정동} 업종={업종} />
+          </Suspense>
         )}
 
         <p className="mt-5 text-xs text-slate-400">
@@ -365,6 +366,65 @@ function Stat({ label, value, unit, highlight }: { label: string; value: string;
       {highlight && (
         <div className="text-xs text-brand-700 mt-1.5 font-medium">{highlight}</div>
       )}
+    </div>
+  );
+}
+
+// On-demand AI fetch (file cache 없는 시군구) — Suspense streaming
+async function OnDemandAI({ 시도, 시군구, 행정동, 업종 }: {
+  시도: string; 시군구: string; 행정동: string; 업종: string;
+}) {
+  const h = headers();
+  const host = h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  const url = `${proto}://${host}/api/llm?` + new URLSearchParams({
+    sido: 시도, signgu: 시군구, adong: 행정동, upjong: 업종,
+  }).toString();
+  try {
+    const r = await fetch(url, { next: { revalidate: 60 * 60 * 24 } });
+    if (!r.ok) {
+      return (
+        <p className="text-xs text-slate-400 italic">
+          AI 분석 준비 중 (잠시 후 다시 시도해주세요)
+        </p>
+      );
+    }
+    const d = await r.json() as { llm: { alias: string; summary: string } };
+    return (
+      <>
+        {d.llm?.alias && (
+          <div className="mb-3 -mt-2">
+            <span className="inline-block text-[11px] font-medium text-brand-600 bg-brand-100 px-2 py-1 rounded">
+              상권 한 줄
+            </span>
+            <h2 className="mt-2 text-lg sm:text-xl font-bold text-slate-900">
+              &ldquo;{d.llm.alias}&rdquo;
+            </h2>
+          </div>
+        )}
+        {d.llm?.summary && (
+          <p className="text-sm sm:text-base text-slate-700 leading-relaxed whitespace-pre-line">
+            {d.llm.summary}
+          </p>
+        )}
+      </>
+    );
+  } catch {
+    return (
+      <p className="text-xs text-slate-400 italic">
+        AI 분석 준비 중 (잠시 후 다시 시도해주세요)
+      </p>
+    );
+  }
+}
+
+function AILoadingFallback() {
+  return (
+    <div className="space-y-2 animate-pulse">
+      <div className="h-4 bg-slate-100 rounded" />
+      <div className="h-4 bg-slate-100 rounded" />
+      <div className="h-4 w-3/4 bg-slate-100 rounded" />
+      <p className="mt-3 text-xs text-slate-400">AI 분석 중… (5~10초)</p>
     </div>
   );
 }
