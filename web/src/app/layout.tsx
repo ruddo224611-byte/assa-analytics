@@ -18,14 +18,21 @@ export default function RootLayout({
     <html lang="ko">
       <body className="min-h-screen bg-white text-slate-900 antialiased flex flex-col">
         <header className="border-b border-slate-200 bg-white">
-          <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+          <div className="flex w-full items-center gap-3 px-3 py-2 sm:px-4 sm:py-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/logo.svg"
+              alt="아싸"
+              width={40}
+              height={40}
+              className="h-9 w-9 sm:h-10 sm:w-10 flex-shrink-0"
+            />
             <span
-              className="text-xl sm:text-2xl font-bold tracking-tight"
+              className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900"
               style={{ fontFamily: "'Gmarket Sans', Pretendard, sans-serif" }}
             >
-              아싸 <span className="text-brand-600">상권분석</span>
+              아싸 상권분석
             </span>
-            <span className="chip-brand">Phase 0</span>
           </div>
         </header>
 
