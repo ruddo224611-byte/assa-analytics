@@ -33,7 +33,7 @@ if (existsSync(envPath)) {
 }
 
 // 일반 import — env 가 readFile 로 직접 채워졌으므로 동기 import 도 안전
-import { calculateScore, type ScoreInput } from "../src/lib/score";
+import { calculateScore, buildSignguContext, type ScoreInput, type SignguContext } from "../src/lib/score";
 import { generateReport, type LLMOutput, type CompareContext } from "../src/lib/llm-client";
 
 const DATA_BUILD = resolve(__dirname, "..", "..", "data", "build");
@@ -153,13 +153,20 @@ async function main() {
   const signguAvgPop = popCount > 0 ? Math.round(popSum / popCount) : null;
   const signguAvgAge3040 = age3040PopSum > 0 ? (age3040Sum / age3040PopSum) * 100 : null;
 
-  // 행정동별 모든 업종 score 미리 계산 (순위 산정용)
+  // Day 3: 시군구 컨텍스트 (분위 점수 계산용)
+  const signguCtx: SignguContext = buildSignguContext(data);
+
+  // 행정동별 모든 업종 score 미리 계산 (순위 산정용 — Day 3 ctx 적용)
   const scoresByAdong: Record<string, Map<string, number>> = {}; // adong → upjong → 종합
   const scoresByUpjong: Record<string, Map<string, number>> = {}; // upjong → adong → 종합
   for (const [aName, aData] of Object.entries(data.행정동)) {
     if (!scoresByAdong[aName]) scoresByAdong[aName] = new Map();
     for (const [uName, uData] of Object.entries(aData.업종별)) {
-      const s = calculateScore({ 수요: aData.수요, 경쟁: uData.경쟁, 임대료: aData.임대료 });
+      const s = calculateScore(
+        { 수요: aData.수요, 경쟁: uData.경쟁, 임대료: aData.임대료 },
+        signguCtx,
+        uName,
+      );
       scoresByAdong[aName].set(uName, s.종합);
       if (!scoresByUpjong[uName]) scoresByUpjong[uName] = new Map();
       scoresByUpjong[uName].set(aName, s.종합);
@@ -227,7 +234,11 @@ async function main() {
     if (dryRun) {
       for (const u of todos) {
         const uData = aData.업종별[u];
-        const score = calculateScore({ 수요: aData.수요, 경쟁: uData.경쟁, 임대료: aData.임대료 });
+        const score = calculateScore(
+          { 수요: aData.수요, 경쟁: uData.경쟁, 임대료: aData.임대료 },
+          signguCtx,
+          u,
+        );
         console.log(`    [dry-run] ${u}: 종합 ${score.종합} (${score.톤})`);
       }
       continue;
@@ -240,11 +251,11 @@ async function main() {
       await Promise.all(
         batch.map(async (u) => {
           const uData = aData.업종별[u];
-          const score = calculateScore({
-            수요: aData.수요,
-            경쟁: uData.경쟁,
-            임대료: aData.임대료,
-          });
+          const score = calculateScore(
+            { 수요: aData.수요, 경쟁: uData.경쟁, 임대료: aData.임대료 },
+            signguCtx,
+            u,
+          );
           try {
             const compareCtx = buildCompareContext(a, u, aData);
             const llm = await generateReport({
