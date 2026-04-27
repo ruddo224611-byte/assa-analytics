@@ -34,7 +34,7 @@ if (existsSync(envPath)) {
 
 // 일반 import — env 가 readFile 로 직접 채워졌으므로 동기 import 도 안전
 import { calculateScore, type ScoreInput } from "../src/lib/score";
-import { generateReport, type LLMOutput } from "../src/lib/llm-client";
+import { generateReport, type LLMOutput, type CompareContext } from "../src/lib/llm-client";
 
 const DATA_BUILD = resolve(__dirname, "..", "..", "data", "build");
 
@@ -135,6 +135,71 @@ async function main() {
   const adongs = adong ? [adong] : Object.keys(data.행정동).slice(0, limit);
   console.log(`[build-llm] ${sido} ${signgu}: 행정동 ${adongs.length}개 처리 (dry-run=${dryRun}, skip-cache=${skipCache})`);
 
+  // ============ 비교 컨텍스트 사전 계산 (Day 2 강화) ============
+  // 시군구 평균 인구 + 30~40대 비율
+  const allAdongs = Object.values(data.행정동);
+  let popSum = 0, popCount = 0;
+  let age3040Sum = 0, age3040PopSum = 0;
+  for (const a of allAdongs) {
+    if (a.수요?.인구) {
+      popSum += a.수요.인구;
+      popCount++;
+      const a30 = a.수요.연령대_10?.["30~39세"] ?? 0;
+      const a40 = a.수요.연령대_10?.["40~49세"] ?? 0;
+      age3040Sum += a30 + a40;
+      age3040PopSum += a.수요.인구;
+    }
+  }
+  const signguAvgPop = popCount > 0 ? Math.round(popSum / popCount) : null;
+  const signguAvgAge3040 = age3040PopSum > 0 ? (age3040Sum / age3040PopSum) * 100 : null;
+
+  // 행정동별 모든 업종 score 미리 계산 (순위 산정용)
+  const scoresByAdong: Record<string, Map<string, number>> = {}; // adong → upjong → 종합
+  const scoresByUpjong: Record<string, Map<string, number>> = {}; // upjong → adong → 종합
+  for (const [aName, aData] of Object.entries(data.행정동)) {
+    if (!scoresByAdong[aName]) scoresByAdong[aName] = new Map();
+    for (const [uName, uData] of Object.entries(aData.업종별)) {
+      const s = calculateScore({ 수요: aData.수요, 경쟁: uData.경쟁, 임대료: aData.임대료 });
+      scoresByAdong[aName].set(uName, s.종합);
+      if (!scoresByUpjong[uName]) scoresByUpjong[uName] = new Map();
+      scoresByUpjong[uName].set(aName, s.종합);
+    }
+  }
+
+  function buildCompareContext(adongName: string, upjongName: string, aData: SignguData["행정동"][string]): CompareContext {
+    const a30 = aData.수요?.연령대_10?.["30~39세"] ?? 0;
+    const a40 = aData.수요?.연령대_10?.["40~49세"] ?? 0;
+    const thisAge3040 = aData.수요?.인구 ? ((a30 + a40) / aData.수요.인구) * 100 : null;
+
+    // 이 행정동 안에서 이 업종 순위
+    const aMap = scoresByAdong[adongName];
+    let upjongRank = null;
+    if (aMap) {
+      const sorted = Array.from(aMap.entries()).sort((a, b) => b[1] - a[1]);
+      const idx = sorted.findIndex(([k]) => k === upjongName);
+      if (idx >= 0) upjongRank = idx + 1;
+    }
+
+    // 시군구 안 같은 업종 행정동 순위
+    const uMap = scoresByUpjong[upjongName];
+    let adongRank = null;
+    if (uMap) {
+      const sorted = Array.from(uMap.entries()).sort((a, b) => b[1] - a[1]);
+      const idx = sorted.findIndex(([k]) => k === adongName);
+      if (idx >= 0) adongRank = idx + 1;
+    }
+
+    return {
+      signgu_avg_pop: signguAvgPop,
+      signgu_avg_age3040_pct: signguAvgAge3040,
+      this_age3040_pct: thisAge3040,
+      upjong_rank_in_adong: upjongRank,
+      upjong_total_in_adong: aMap?.size ?? null,
+      adong_rank_in_signgu: adongRank,
+      adong_total_in_signgu: uMap?.size ?? null,
+    };
+  }
+
   let newCalls = 0;
   let cachedSkips = 0;
   for (const a of adongs) {
@@ -148,62 +213,70 @@ async function main() {
     const upjongs = upjong ? [upjong] : Object.keys(aData.업종별);
     console.log(`  [${a}] 업종 ${upjongs.length}개`);
 
+    // 호출할 업종만 필터 (캐시 있으면 skip)
+    const todos: string[] = [];
     for (const u of upjongs) {
-      const uData = aData.업종별[u];
-      if (!uData) continue;
-
-      // 캐시 확인
+      if (!aData.업종별[u]) continue;
       if (cache.행정동[a].업종별[u] && !skipCache) {
         cachedSkips++;
         continue;
       }
+      todos.push(u);
+    }
 
-      // 점수 계산
-      const score = calculateScore({
-        수요: aData.수요,
-        경쟁: uData.경쟁,
-        임대료: aData.임대료,
-      });
-
-      if (dryRun) {
+    if (dryRun) {
+      for (const u of todos) {
+        const uData = aData.업종별[u];
+        const score = calculateScore({ 수요: aData.수요, 경쟁: uData.경쟁, 임대료: aData.임대료 });
         console.log(`    [dry-run] ${u}: 종합 ${score.종합} (${score.톤})`);
-        continue;
       }
+      continue;
+    }
 
-      // LLM 호출
-      try {
-        const llm = await generateReport({
-          시도: sido,
-          시군구: signgu,
-          행정동: a,
-          업종: u,
-          점수: { ...score },
-          수요요약: score.설명.수요,
-          경쟁요약: score.설명.경쟁,
-          임대료요약: score.설명.임대료,
-        });
-
-        cache.행정동[a].업종별[u] = {
-          score: {
-            수요: score.수요,
-            경쟁: score.경쟁,
-            임대료: score.임대료,
-            종합: score.종합,
-            톤: score.톤,
-          },
-          llm,
-        };
-        newCalls++;
-        // 추정 비용: input ~150t, output ~120t 평균
-        cache.meta.호출수++;
-        cache.meta.추정비용USD += 150e-6 * 1 + 120e-6 * 5; // = $0.00075
-        console.log(`    ✓ ${u}: ${llm.summary.slice(0, 50)}...`);
-      } catch (e) {
-        console.error(`    ✗ ${u}: ${String(e).slice(0, 200)}`);
-      }
-
-      // rate limit 보호: 호출 사이 약간 휴식 (Haiku 는 분당 한도 높지만 안전하게)
-      await new Promise((r) => setTimeout(r, 100));
+    // Day 2: 5개 동시 병렬 호출 (Anthropic Haiku 분당 한도 안에서, 5배 빠름)
+    const PARALLEL = 5;
+    for (let i = 0; i < todos.length; i += PARALLEL) {
+      const batch = todos.slice(i, i + PARALLEL);
+      await Promise.all(
+        batch.map(async (u) => {
+          const uData = aData.업종별[u];
+          const score = calculateScore({
+            수요: aData.수요,
+            경쟁: uData.경쟁,
+            임대료: aData.임대료,
+          });
+          try {
+            const compareCtx = buildCompareContext(a, u, aData);
+            const llm = await generateReport({
+              시도: sido,
+              시군구: signgu,
+              행정동: a,
+              업종: u,
+              점수: { ...score },
+              수요요약: score.설명.수요,
+              경쟁요약: score.설명.경쟁,
+              임대료요약: score.설명.임대료,
+              비교: compareCtx,
+            });
+            cache.행정동[a].업종별[u] = {
+              score: {
+                수요: score.수요,
+                경쟁: score.경쟁,
+                임대료: score.임대료,
+                종합: score.종합,
+                톤: score.톤,
+              },
+              llm,
+            };
+            newCalls++;
+            cache.meta.호출수++;
+            cache.meta.추정비용USD += 150e-6 * 1 + 120e-6 * 5;
+            console.log(`    ✓ ${u}: ${llm.summary.slice(0, 50)}...`);
+          } catch (e) {
+            console.error(`    ✗ ${u}: ${String(e).slice(0, 200)}`);
+          }
+        }),
+      );
     }
 
     // 행정동 끝날 때마다 중간 저장 (비용 보호)
