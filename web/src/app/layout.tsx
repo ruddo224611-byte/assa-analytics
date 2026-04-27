@@ -28,7 +28,7 @@ export default function RootLayout({
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/logo.svg"
+                src="/logo.png"
                 alt=""
                 width={32}
                 height={32}

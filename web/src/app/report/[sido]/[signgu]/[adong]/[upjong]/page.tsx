@@ -131,13 +131,15 @@ async function loadLLM(시도: string, 시군구: string): Promise<LLMCacheFile 
 interface PageProps {
   // Next.js 동적 segment 명에 한글 못 씀 → 영어 키. URL 값(한글)은 OK
   params: { sido: string; signgu: string; adong: string; upjong: string };
+  searchParams: { keyword?: string };
 }
 
-export default async function ReportPage({ params }: PageProps) {
+export default async function ReportPage({ params, searchParams }: PageProps) {
   const 시도 = decodeURIComponent(params.sido);
   const 시군구 = decodeURIComponent(params.signgu);
   const 행정동 = decodeURIComponent(params.adong);
   const 업종 = decodeURIComponent(params.upjong);
+  const keyword = searchParams.keyword?.trim() ?? "";
 
   const data = await loadSigngu(시도, 시군구);
   if (!data) notFound();
@@ -147,6 +149,17 @@ export default async function ReportPage({ params }: PageProps) {
 
   const u = adong.업종별[업종];
   if (!u) notFound();
+
+  // Phase 3 Day 5b: keyword 가 있으면 sbiz_codes 중 sbiz_names 가 keyword 포함하는 것만 필터
+  // (예: 업종 = "스포츠교육기관", keyword = "필라테스" → 필라테스 코드만 핀에 표시)
+  const filteredCodes = keyword
+    ? u.sbiz_codes.filter((_, i) => (u.sbiz_names[i] ?? "").includes(keyword))
+    : u.sbiz_codes;
+  const filteredCodeToName = Object.fromEntries(
+    u.sbiz_codes
+      .map((c, i) => [c, u.sbiz_names[i] ?? ""])
+      .filter(([c]) => filteredCodes.includes(c as string)),
+  );
 
   // Phase 3 Day 3: 시군구 분위 기반 점수 (시군구 컨텍스트 사용)
   const signguCtx = buildSignguContext(data);
@@ -177,9 +190,14 @@ export default async function ReportPage({ params }: PageProps) {
           <span className="chip-brand text-sm">{시도}</span>
           <span className="chip-brand text-sm">{시군구}</span>
           <span className="chip-brand text-sm">{행정동}</span>
+          {keyword && (
+            <span className="text-sm font-medium px-2.5 py-1 rounded bg-amber-100 text-amber-700">
+              🔍 {keyword}
+            </span>
+          )}
         </div>
         <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-slate-900">
-          {업종} <span className="text-brand-600">상권 리포트</span>
+          {keyword ? keyword : 업종} <span className="text-brand-600">상권 리포트</span>
         </h1>
         <p className="mt-4 text-base sm:text-lg text-slate-500">
           이 자리에 {업종} 차려도 될지, 데이터로 한 번 보세요.
@@ -255,7 +273,14 @@ export default async function ReportPage({ params }: PageProps) {
       </Section>
 
       {/* ======== 3. 경쟁 ======== */}
-      <Section title="🏪 경쟁 업체" subtitle="반경·시군구 단위로 동일 업종 분포 보기">
+      <Section
+        title="🏪 경쟁 업체"
+        subtitle={
+          keyword && filteredCodes.length > 0
+            ? `반경·시군구 단위 동일 업종 분포. 지도 핀은 "${keyword}" 만 표시 (${filteredCodes.length}개 SBIZ 코드)`
+            : "반경·시군구 단위로 동일 업종 분포 보기"
+        }
+      >
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Stat label="반경 500m" value={fmt(u.경쟁.반경500m_동일업종)} unit="개" />
           <Stat label="반경 1km" value={fmt(u.경쟁.반경1km_동일업종)} unit="개" />
@@ -265,19 +290,22 @@ export default async function ReportPage({ params }: PageProps) {
                   ? (u.경쟁.시군구_YoY_pct > 0 ? "증가 추세" : u.경쟁.시군구_YoY_pct < -3 ? "빠르게 감소" : "안정")
                   : undefined} />
         </div>
+        {keyword && (
+          <p className="mt-4 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+            ※ 위 카운트는 <b>{업종}</b> 카테고리 전체 (NTS 단위). 아래 지도는 <b>&ldquo;{keyword}&rdquo;</b> 만 정확 필터.
+          </p>
+        )}
         <p className="mt-4 mb-4 text-xs text-slate-500">
           반경 카운트는 행정동 중심 좌표 기준. 아래 지도에서 실제 핀 위치 확인 가능.
         </p>
-        {/* 카카오맵 (Day 4 신규) */}
+        {/* 카카오맵 (Day 4 신규) — Day 5b: keyword 있으면 필터된 sbiz 만 */}
         <CompetitionMap
           centerLng={adong.지역.중심좌표.lng}
           centerLat={adong.지역.중심좌표.lat}
           시도={시도}
           시군구={시군구}
-          sbizCodes={u.sbiz_codes}
-          sbizCodeToName={Object.fromEntries(
-            u.sbiz_codes.map((c, i) => [c, u.sbiz_names[i] ?? ""])
-          )}
+          sbizCodes={filteredCodes}
+          sbizCodeToName={filteredCodeToName}
         />
       </Section>
 
