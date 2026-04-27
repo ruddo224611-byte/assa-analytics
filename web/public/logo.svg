@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="아싸">
   <circle cx="50" cy="50" r="50" fill="#1f7ce3"/>
-  <text x="50" y="62"
-        font-family="'Gmarket Sans', 'Pretendard', sans-serif"
-        font-size="42" font-weight="900" text-anchor="middle" fill="#ffffff">아싸</text>
+  <text x="50" y="64"
+        font-family="'Gmarket Sans', 'Pretendard', 'Apple SD Gothic Neo', '맑은 고딕', 'Malgun Gothic', sans-serif"
+        font-size="38" font-weight="900" text-anchor="middle" fill="#ffffff" letter-spacing="-1">아싸</text>
 </svg>
