@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -17,22 +18,29 @@ export default function RootLayout({
   return (
     <html lang="ko">
       <body className="min-h-screen bg-white text-slate-900 antialiased flex flex-col">
+        {/* assasup.com 과 동일 패턴: max-w 안 좌측 정렬 + 클릭 시 홈 */}
         <header className="border-b border-slate-200 bg-white">
-          <div className="flex w-full items-center gap-3 px-3 py-2 sm:px-4 sm:py-3">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/logo.svg"
-              alt="아싸"
-              width={40}
-              height={40}
-              className="h-9 w-9 sm:h-10 sm:w-10 flex-shrink-0"
-            />
-            <span
-              className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900"
-              style={{ fontFamily: "'Gmarket Sans', Pretendard, sans-serif" }}
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 py-3">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 hover:opacity-80 transition-opacity"
+              aria-label="아싸 상권분석 홈으로"
             >
-              아싸 상권분석
-            </span>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/logo.svg"
+                alt=""
+                width={32}
+                height={32}
+                className="h-8 w-8"
+              />
+              <span
+                className="text-lg sm:text-xl font-bold tracking-tight text-slate-900"
+                style={{ fontFamily: "'Gmarket Sans', Pretendard, sans-serif" }}
+              >
+                아싸 상권분석
+              </span>
+            </Link>
           </div>
         </header>
 
