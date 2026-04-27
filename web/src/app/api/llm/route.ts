@@ -1,15 +1,18 @@
 /**
- * On-demand LLM API route — Phase 3 Day 4 PR2.
+ * On-demand LLM API route — Phase 3 Day 4 PR3.
  *
  * 동작:
  *   1. (시도, 시군구, 행정동, 업종) 받아서 LLM 결과 반환
- *   2. 캐시 우선순위: KV → file (-llm.json) → LLM 호출
- *   3. LLM 호출 결과는 KV 에 저장 (TTL 30일)
+ *   2. 캐시 우선순위: Redis → file (-llm.json) → LLM 호출
+ *   3. LLM 호출 결과는 Redis 에 저장 (TTL 30일)
  *
- * 운영자 액션 (Vercel KV 셋업 — 안 해도 동작은 하지만 매번 LLM 호출 → 비용 ↑):
- *   1. Vercel Dashboard → Storage → Create Database → KV (Upstash Redis)
- *   2. 프로젝트 (assa-analytics) 에 연결
- *   3. 환경변수 KV_REST_API_URL / KV_REST_API_TOKEN 자동 등록
+ * Day 4 PR3 변경: @vercel/kv → 표준 redis 패키지
+ *   (Vercel KV 폐기됨 → Marketplace Redis 인스턴스의 REDIS_URL 사용)
+ *
+ * 운영자 액션 (Redis 안 셋업하면 매번 LLM 호출 → 비용 ↑):
+ *   1. Vercel Marketplace → Redis Integration 설치
+ *   2. assa-analytics 프로젝트 연결 (Custom Prefix: REDIS)
+ *   3. 환경변수 REDIS_URL 자동 등록
  *   4. ANTHROPIC_API_KEY 도 Vercel 환경변수 등록 (Sensitive 켜기)
  *
  * URL: /api/llm?sido=서울특별시&signgu=강남구&adong=역삼1동&upjong=커피음료점
@@ -17,17 +20,36 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
+import { createClient, type RedisClientType } from "redis";
 import { calculateScore, buildSignguContext, type ScoreInput } from "@/lib/score";
 import { generateReport, type CompareContext, type LLMOutput } from "@/lib/llm-client";
 
-// runtime: nodejs (Anthropic SDK 가 edge runtime 미지원)
+// runtime: nodejs (Anthropic SDK + redis 가 edge runtime 미지원)
 export const runtime = "nodejs";
 export const maxDuration = 30; // Vercel Pro 함수 최대 30초 (LLM 4-10초 + 여유)
 
 interface ResponseBody {
   score: { 수요: number; 경쟁: number; 임대료: number; 종합: number; 톤: string };
   llm: { alias: string; summary: string };
-  source: "kv" | "file" | "llm"; // 캐시 출처 (디버그)
+  source: "redis" | "file" | "llm"; // 캐시 출처 (디버그)
+}
+
+// Redis client singleton (모듈 레벨 — Vercel function warm 동안 재사용)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let redisClient: RedisClientType<any, any, any> | null = null;
+async function getRedis() {
+  if (!process.env.REDIS_URL) return null;
+  if (redisClient?.isReady) return redisClient;
+  try {
+    redisClient = createClient({ url: process.env.REDIS_URL });
+    redisClient.on("error", (e) => console.error("[redis] error:", e));
+    await redisClient.connect();
+    return redisClient;
+  } catch (e) {
+    console.error("[redis] connect 실패:", e);
+    redisClient = null;
+    return null;
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -43,16 +65,17 @@ export async function GET(request: NextRequest) {
 
   const cacheKey = `llm:${시도}:${시군구}:${행정동}:${업종}`;
 
-  // 1. KV 캐시 확인 (가능하면)
-  if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+  // 1. Redis 캐시 확인 (REDIS_URL 환경변수 있으면)
+  const redis = await getRedis();
+  if (redis) {
     try {
-      const { kv } = await import("@vercel/kv");
-      const cached = await kv.get<ResponseBody>(cacheKey);
+      const cached = await redis.get(cacheKey);
       if (cached) {
-        return NextResponse.json({ ...cached, source: "kv" });
+        const parsed = JSON.parse(cached) as ResponseBody;
+        return NextResponse.json({ ...parsed, source: "redis" });
       }
-    } catch {
-      // KV 실패해도 다음 단계로
+    } catch (e) {
+      console.error("[redis] get 실패:", e);
     }
   }
 
@@ -95,12 +118,15 @@ export async function GET(request: NextRequest) {
           llm: { alias: fileEntry.llm.alias, summary: fileEntry.llm.summary },
           source: "file",
         };
-        // KV 에도 저장 (다음부터 더 빠르게)
-        if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+        // Redis 에도 저장 (다음부터 더 빠르게)
+        if (redis) {
           try {
-            const { kv } = await import("@vercel/kv");
-            await kv.set(cacheKey, result, { ex: 60 * 60 * 24 * 30 }); // 30일
-          } catch {}
+            await redis.set(cacheKey, JSON.stringify(result), {
+              EX: 60 * 60 * 24 * 30, // 30일
+            });
+          } catch (e) {
+            console.error("[redis] set 실패:", e);
+          }
         }
         return NextResponse.json(result);
       }
@@ -208,12 +234,15 @@ export async function GET(request: NextRequest) {
     source: "llm",
   };
 
-  // KV 에 저장
-  if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+  // Redis 에 저장 (다음 호출부터 cache hit)
+  if (redis) {
     try {
-      const { kv } = await import("@vercel/kv");
-      await kv.set(cacheKey, result, { ex: 60 * 60 * 24 * 30 }); // 30일
-    } catch {}
+      await redis.set(cacheKey, JSON.stringify(result), {
+        EX: 60 * 60 * 24 * 30, // 30일
+      });
+    } catch (e) {
+      console.error("[redis] set 실패:", e);
+    }
   }
 
   return NextResponse.json(result);
