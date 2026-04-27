@@ -140,9 +140,12 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 /**
  * 업종 검색 + 선택 combobox.
- * - 텍스트 입력 → 별칭/정식명/substring 매칭 (upjong-aliases.ts)
- * - 화살표/엔터로 선택, 클릭으로 선택, blur 시 닫힘
+ * - 즉시: 별칭/정식명/substring 매칭 (upjong-aliases.ts)
+ * - 300ms debounce 후: LLM 검색 (/api/upjong-search) — 별칭에 없는 자유 검색어 매칭
+ *   예: "필라테스" → 헬스클럽 / 예체능학원
  */
+interface AIMatch { name: string; reason: string; }
+
 function UpjongCombobox({
   value, onChange, options,
 }: {
@@ -153,14 +156,14 @@ function UpjongCombobox({
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [highlightIdx, setHighlightIdx] = useState(0);
+  const [aiMatches, setAiMatches] = useState<AIMatch[]>([]);
+  const [aiLoading, setAiLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // value 가 외부에서 set 되면 query 동기화
   useEffect(() => {
     if (value && !open) setQuery(value);
   }, [value, open]);
 
-  // outside click → 닫기
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -171,10 +174,44 @@ function UpjongCombobox({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const results = useMemo(() => {
-    if (!query.trim()) return options.slice(0, 8); // 빈 입력 → 처음 8개
+  const localResults = useMemo(() => {
+    if (!query.trim()) return options.slice(0, 8);
     return searchUpjong(query, options, 8);
   }, [query, options]);
+
+  // LLM 검색 — debounce 300ms, 로컬 결과 0개일 때만 (불필요 호출 절약)
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2 || localResults.length > 0) {
+      setAiMatches([]);
+      setAiLoading(false);
+      return;
+    }
+    setAiLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/upjong-search?q=${encodeURIComponent(q)}`);
+        const d = await r.json();
+        setAiMatches(d.matches ?? []);
+      } catch {
+        setAiMatches([]);
+      } finally {
+        setAiLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query, localResults.length]);
+
+  // 키보드 네비용 통합 리스트 (로컬 + AI)
+  const allItems = useMemo(() => {
+    const items: { kind: "local" | "ai"; name: string; reason?: string }[] = [];
+    for (const u of localResults) items.push({ kind: "local", name: u });
+    for (const m of aiMatches) {
+      if (!items.find((i) => i.name === m.name))
+        items.push({ kind: "ai", name: m.name, reason: m.reason });
+    }
+    return items;
+  }, [localResults, aiMatches]);
 
   function pick(u: string) {
     onChange(u);
@@ -199,42 +236,75 @@ function UpjongCombobox({
           if (e.key === "ArrowDown") {
             e.preventDefault();
             setOpen(true);
-            setHighlightIdx((i) => Math.min(i + 1, results.length - 1));
+            setHighlightIdx((i) => Math.min(i + 1, allItems.length - 1));
           } else if (e.key === "ArrowUp") {
             e.preventDefault();
             setHighlightIdx((i) => Math.max(i - 1, 0));
-          } else if (e.key === "Enter" && open && results[highlightIdx]) {
+          } else if (e.key === "Enter" && open && allItems[highlightIdx]) {
             e.preventDefault();
-            pick(results[highlightIdx]);
+            pick(allItems[highlightIdx].name);
           } else if (e.key === "Escape") {
             setOpen(false);
           }
         }}
-        placeholder="업종 검색 (예: 카페, 치킨, 헬스장)"
+        placeholder="업종 검색 (예: 카페, 필라테스, 키즈카페)"
         className={selectCls}
         autoComplete="off"
       />
-      {open && results.length > 0 && (
-        <ul className="absolute left-0 right-0 mt-1 max-h-64 overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg z-10">
-          {results.map((u, i) => (
-            <li
-              key={u}
-              onMouseDown={(e) => { e.preventDefault(); pick(u); }}
-              onMouseEnter={() => setHighlightIdx(i)}
-              className={`px-4 py-2.5 cursor-pointer text-sm ${
-                i === highlightIdx
-                  ? "bg-brand-50 text-brand-700 font-medium"
-                  : "text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              {u}
-            </li>
-          ))}
-        </ul>
+      {open && (allItems.length > 0 || aiLoading) && (
+        <div className="absolute left-0 right-0 mt-1 max-h-80 overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg z-10">
+          {/* 즉시 결과 */}
+          {localResults.length > 0 && (
+            <ul>
+              {localResults.map((u, i) => (
+                <li
+                  key={u}
+                  onMouseDown={(e) => { e.preventDefault(); pick(u); }}
+                  onMouseEnter={() => setHighlightIdx(i)}
+                  className={`px-4 py-2.5 cursor-pointer text-sm ${
+                    i === highlightIdx
+                      ? "bg-brand-50 text-brand-700 font-medium"
+                      : "text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  {u}
+                </li>
+              ))}
+            </ul>
+          )}
+          {/* AI 추천 */}
+          {(aiMatches.length > 0 || aiLoading) && (
+            <div className="border-t border-slate-100">
+              <div className="px-4 py-1.5 text-[10px] font-medium text-brand-600 bg-brand-50/60 uppercase tracking-wide">
+                {aiLoading ? "🤖 AI 분석 중..." : "💡 AI 추천 (가장 가까운 업종)"}
+              </div>
+              {aiMatches.map((m, i) => {
+                const idx = localResults.length + i;
+                return (
+                  <div
+                    key={m.name}
+                    onMouseDown={(e) => { e.preventDefault(); pick(m.name); }}
+                    onMouseEnter={() => setHighlightIdx(idx)}
+                    className={`px-4 py-2.5 cursor-pointer ${
+                      idx === highlightIdx
+                        ? "bg-brand-50"
+                        : "hover:bg-slate-50"
+                    }`}
+                  >
+                    <div className={`text-sm font-medium ${idx === highlightIdx ? "text-brand-700" : "text-slate-800"}`}>
+                      {m.name}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-0.5">{m.reason}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
-      {open && query.trim() && results.length === 0 && (
+      {open && query.trim().length >= 2 && allItems.length === 0 && !aiLoading && (
         <div className="absolute left-0 right-0 mt-1 rounded-lg border border-slate-200 bg-white shadow-lg z-10 px-4 py-3 text-sm text-slate-500">
-          매칭 업종 없음 — 다른 키워드 (예: 카페, 분식, 미용실)
+          매칭 업종 없음 — 다른 키워드 시도 (예: 카페, 분식, 미용실)
         </div>
       )}
     </div>
