@@ -21,7 +21,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import Simulator from "./Simulator";
 import CompetitionMap from "./CompetitionMap";
-import { calculateScore } from "@/lib/score";
+import { calculateScore, buildSignguContext } from "@/lib/score";
 
 // ============ 데이터 형식 (Phase 1 build-signgu-h.ts 와 동기화) ============
 
@@ -147,12 +147,13 @@ export default async function ReportPage({ params }: PageProps) {
   const u = adong.업종별[업종];
   if (!u) notFound();
 
-  // Phase 3: 룰 엔진 점수 (항상 즉시 계산) + LLM 캐시 (있으면 표시)
-  const score = calculateScore({
-    수요: adong.수요,
-    경쟁: u.경쟁,
-    임대료: adong.임대료,
-  });
+  // Phase 3 Day 3: 시군구 분위 기반 점수 (시군구 컨텍스트 사용)
+  const signguCtx = buildSignguContext(data);
+  const score = calculateScore(
+    { 수요: adong.수요, 경쟁: u.경쟁, 임대료: adong.임대료 },
+    signguCtx,
+    업종,
+  );
   const llmCache = await loadLLM(시도, 시군구);
   const aiEntry = llmCache?.행정동?.[행정동]?.업종별?.[업종];
 
@@ -207,15 +208,15 @@ export default async function ReportPage({ params }: PageProps) {
           </div>
         ) : null}
 
-        {/* 점수 4종 — Day 2: 한국어 풀이 추가 */}
-        <div className="grid grid-cols-4 gap-2 mb-4">
+        {/* 점수 4종 — Day 3: 시군구 분위 기반 (50점 = 시군구 평균) */}
+        <div className="grid grid-cols-4 gap-2 mb-3">
           <ScoreBadge label="수요" sub="사람 많은지" value={score.수요} />
           <ScoreBadge label="경쟁" sub="비어있는지" value={score.경쟁} />
           <ScoreBadge label="임대료" sub="저렴한지" value={score.임대료} />
           <ScoreBadge label="종합" sub="전체 평가" value={score.종합} highlight={score.톤} />
         </div>
-        <p className="text-[11px] text-slate-400 -mt-2 mb-4 text-center">
-          ※ 100점에 가까울수록 창업에 유리. 50점 = 평균
+        <p className="text-[11px] text-slate-400 mb-4 text-center">
+          ※ <strong className="text-slate-500">{시군구} 안에서</strong> 상대 위치. 100 = {시군구} 1위, 50 = 평균, 0 = 꼴찌.
         </p>
 
         {/* 한 줄 요약 (LLM) */}

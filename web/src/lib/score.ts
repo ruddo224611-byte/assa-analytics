@@ -1,19 +1,26 @@
 /**
- * 룰 엔진 점수 시스템 — Phase 3 Day 1.
+ * 룰 엔진 점수 시스템 — Phase 3 Day 3 정밀화.
  *
- * 입력: 행정동 데이터 + 업종 데이터 (build-signgu-h.ts 산출물 일부).
- * 출력: 4가지 점수 (0~100) + 톤 ("양호"/"보통"/"우려").
+ * Day 3 변경 (운영자 피드백 — 강남구 다 0~30점 너무 단순):
+ *   - 절대 임계값 → **시군구 분위 (percentile rank)** 기반
+ *   - 100 = 시군구 안 1위, 50 = 중앙값, 0 = 꼴찌
+ *   - 사용자 의도 ("이 자리, 강남구 안에서 어디쯤?") 와 일치
  *
- * 톤다운 정책:
- *   - 빨강·초록 같은 단정적 색상 X
- *   - "양호 / 보통 / 우려" 처럼 데이터 표현
- *   - 점수는 LLM prompt 의 input 으로도 사용
+ * 단점 보완: 시군구간 비교는 안 됨 (강남구 100 ≠ 도봉구 100 의 절대 비교).
+ *   하지만 운영자 의도는 "이 시군구 안에서 어디 차릴지" 라 분위 기준이 정확.
+ *
+ * 점수 풀이:
+ *   - 수요: 시군구 안에서 사람·30~40대 많은지
+ *   - 경쟁: 시군구 안에서 비어있는지 (반경 500m 동일업종)
+ *   - 임대료: 시군구 안에서 저렴한지 (1층 기준)
+ *   - 종합: 위 3개 가중평균
  */
 export interface ScoreInput {
   수요: {
     인구: number | null;
     세대: number | null;
     세대당인구: number | null;
+    성비: number | null;
     연령대_10: Record<string, number | null>;
   };
   경쟁: {
@@ -27,6 +34,17 @@ export interface ScoreInput {
   };
 }
 
+/**
+ * 시군구 컨텍스트 — 같은 시군구 안 모든 행정동·업종의 raw 통계.
+ * 페이지·CLI 가 한 번 계산해서 전달.
+ */
+export interface SignguContext {
+  populations: number[]; // 모든 행정동 인구 (정렬 안 됨, 필요 시 정렬)
+  age3040Pcts: number[]; // 모든 행정동 30~40대 비율
+  rentFloor1: number[]; // 모든 행정동 1층 임대료 (천원/㎡)
+  competitionByUpjong: Record<string, number[]>; // 업종 → 모든 행정동 반경 500m 동일업종
+}
+
 export interface ScoreResult {
   수요: number; // 0~100
   경쟁: number;
@@ -36,114 +54,141 @@ export interface ScoreResult {
   설명: { 수요: string; 경쟁: string; 임대료: string };
 }
 
-// 0~100 사이로 자르기
-const clamp = (n: number) => Math.max(0, Math.min(100, n));
-
-/**
- * 수요 점수: 인구 + 30~49세 비율 + 세대당 인구 균형.
- *
- *   - 인구 (10000명 = 100, 0명 = 0): 가중치 0.4
- *   - 30~49세 비율 (40% = 100, 10% = 0): 가중치 0.3
- *   - 세대당 인구 (2.0 가까울수록 100, 1.0/3.5 양극단 = 0): 가중치 0.3
- */
-function scoreDemand(d: ScoreInput["수요"]): { score: number; 설명: string } {
-  if (d.인구 == null) return { score: 0, 설명: "데이터 부족" };
-
-  const popScore = clamp((d.인구 / 10000) * 100);
-
-  const a30 = d.연령대_10["30~39세"] ?? 0;
-  const a40 = d.연령대_10["40~49세"] ?? 0;
-  const ageRatio = (a30 + a40) / Math.max(d.인구, 1);
-  const ageScore = clamp(((ageRatio - 0.1) / 0.3) * 100); // 10% → 0, 40% → 100
-
-  let hhScore = 50;
-  if (d.세대당인구 != null) {
-    const dist = Math.abs(d.세대당인구 - 2.0);
-    hhScore = clamp(100 - dist * 80);
+// ============ percentile helper ============
+// value 가 sorted (오름차순) 안에서 몇 percentile?
+// higherBetter=true: 큰 게 좋음 → value 가 클수록 점수 ↑
+// higherBetter=false: 작은 게 좋음 → value 가 작을수록 점수 ↑
+function percentileScore(
+  value: number | null,
+  arr: number[],
+  higherBetter: boolean,
+): number {
+  if (value == null) return 50;
+  if (arr.length === 0) return 50;
+  if (arr.length === 1) return 50; // 비교 대상 1개면 평균
+  const sorted = arr.slice().sort((a, b) => a - b);
+  let belowCount = 0; // value 보다 "안 좋은" 개수
+  let equalCount = 0;
+  for (const v of sorted) {
+    if (v === value) equalCount++;
+    else if ((higherBetter && v < value) || (!higherBetter && v > value))
+      belowCount++;
   }
-
-  const total = clamp(popScore * 0.4 + ageScore * 0.3 + hhScore * 0.3);
-
-  // 설명 생성
-  const parts: string[] = [];
-  if (d.인구 != null) parts.push(`인구 ${d.인구.toLocaleString()}명`);
-  if (ageRatio > 0) parts.push(`30~40대 ${(ageRatio * 100).toFixed(0)}%`);
-  return { score: Math.round(total), 설명: parts.join(", ") };
+  // 본인 포함 + 동점은 절반씩
+  const rank = belowCount + equalCount / 2;
+  return Math.round((rank / sorted.length) * 100);
 }
 
-/**
- * 경쟁 점수: 반경 500m 의 동일업종 수 + 시군구 YoY.
- *
- *   - 반경 500m: 0개=100, 5개=70, 15개=40, 30+개=0 (지수 감쇠)
- *   - 시군구 YoY: 감소 추세 +, 증가 추세 약간 - (가중치 작음)
- */
-function scoreCompetition(c: ScoreInput["경쟁"]): { score: number; 설명: string } {
-  const n500 = c.반경500m_동일업종;
-  const baseScore = clamp(100 * Math.exp(-n500 / 8));
-
-  let yoyAdjust = 0;
-  if (c.시군구_YoY_pct != null) {
-    yoyAdjust = clamp(-c.시군구_YoY_pct * 2); // -1% YoY → +2점
-    yoyAdjust = Math.max(-20, Math.min(20, yoyAdjust));
+// ============ 시군구 컨텍스트 빌더 ============
+// page/CLI 모두 사용. SignguData 형식에서 추출.
+export function buildSignguContext(signguData: {
+  행정동: Record<
+    string,
+    {
+      수요: ScoreInput["수요"];
+      임대료: ScoreInput["임대료"];
+      업종별: Record<string, { 경쟁: ScoreInput["경쟁"] }>;
+    }
+  >;
+}): SignguContext {
+  const ctx: SignguContext = {
+    populations: [],
+    age3040Pcts: [],
+    rentFloor1: [],
+    competitionByUpjong: {},
+  };
+  for (const ad of Object.values(signguData.행정동)) {
+    if (ad.수요?.인구) {
+      ctx.populations.push(ad.수요.인구);
+      const a30 = ad.수요.연령대_10?.["30~39세"] ?? 0;
+      const a40 = ad.수요.연령대_10?.["40~49세"] ?? 0;
+      ctx.age3040Pcts.push(((a30 + a40) / ad.수요.인구) * 100);
+    }
+    const f1 = ad.임대료?.층별?.["1층"] ?? ad.임대료?.층별?.["1"];
+    if (f1?.임대료_천원_m2) ctx.rentFloor1.push(f1.임대료_천원_m2);
+    for (const [u, uData] of Object.entries(ad.업종별)) {
+      if (!ctx.competitionByUpjong[u]) ctx.competitionByUpjong[u] = [];
+      ctx.competitionByUpjong[u].push(uData.경쟁.반경500m_동일업종);
+    }
   }
-
-  const total = clamp(baseScore + yoyAdjust);
-
-  const yoyText =
-    c.시군구_YoY_pct == null
-      ? ""
-      : c.시군구_YoY_pct > 1
-        ? ", 시군구 증가 추세"
-        : c.시군구_YoY_pct < -1
-          ? ", 시군구 감소 추세"
-          : ", 시군구 안정";
-  return {
-    score: Math.round(total),
-    설명: `반경 500m 에 ${n500}개${yoyText}`,
-  };
+  return ctx;
 }
 
-/**
- * 임대료 점수: 1층 임대료 (낮을수록 높음).
- *
- *   - 1층 20 천원/㎡ → 100, 50 → 60, 80+ → 0 (linear)
- *   - 1층 데이터 없으면 데이터부족
- */
-function scoreRent(r: ScoreInput["임대료"]): { score: number; 설명: string } {
-  const f1 = r.층별["1"];
-  if (!f1?.임대료_천원_m2) return { score: 0, 설명: "1층 임대료 데이터 없음" };
+// ============ 점수 계산 ============
+export function calculateScore(
+  input: ScoreInput,
+  ctx: SignguContext,
+  업종: string,
+): ScoreResult {
+  // 수요 = 인구 분위 0.55 + 30~40대% 분위 0.45
+  const popScore = percentileScore(input.수요.인구, ctx.populations, true);
+  const age3040 = input.수요.인구
+    ? (((input.수요.연령대_10?.["30~39세"] ?? 0) +
+        (input.수요.연령대_10?.["40~49세"] ?? 0)) /
+        input.수요.인구) *
+      100
+    : null;
+  const ageScore = percentileScore(age3040, ctx.age3040Pcts, true);
+  const 수요점수 = Math.round(popScore * 0.55 + ageScore * 0.45);
 
-  const rent = f1.임대료_천원_m2;
-  // 20 → 100, 50 → 60, 80 → 20, 100+ → 0
-  const score = clamp(100 - ((rent - 20) / 80) * 100);
-  const 평당월세 = Math.round(rent * 1000 * 3.305785);
-  return {
-    score: Math.round(score),
-    설명: `1층 ${rent} 천원/㎡ (평당 약 ${평당월세.toLocaleString()}원/월)`,
-  };
-}
+  // 경쟁 = 반경 500m 동일업종 분위 (낮을수록 ↑) + YoY 가산
+  const compArr = ctx.competitionByUpjong[업종] ?? [];
+  let 경쟁점수 = percentileScore(
+    input.경쟁.반경500m_동일업종,
+    compArr,
+    false,
+  );
+  // YoY 감소 추세는 약간 +, 증가 추세는 약간 -
+  if (input.경쟁.시군구_YoY_pct != null) {
+    const yoyAdj = -input.경쟁.시군구_YoY_pct * 1.5; // -1% YoY → +1.5점
+    경쟁점수 = Math.max(0, Math.min(100, 경쟁점수 + yoyAdj));
+  }
+  경쟁점수 = Math.round(경쟁점수);
 
-export function calculateScore(input: ScoreInput): ScoreResult {
-  const d = scoreDemand(input.수요);
-  const c = scoreCompetition(input.경쟁);
-  const r = scoreRent(input.임대료);
+  // 임대료 = 1층 임대료 분위 (낮을수록 ↑)
+  const f1 = input.임대료.층별?.["1"];
+  let 임대료점수 = 50;
+  let 임대료설명 = "1층 임대료 데이터 없음";
+  if (f1?.임대료_천원_m2) {
+    임대료점수 = percentileScore(f1.임대료_천원_m2, ctx.rentFloor1, false);
+    const 평당 = Math.round(f1.임대료_천원_m2 * 1000 * 3.305785);
+    임대료설명 = `1층 ${f1.임대료_천원_m2} 천원/㎡ (평당 약 ${평당.toLocaleString()}원/월)`;
+  }
 
   // 종합: 수요 30% + 경쟁 35% + 임대료 35%
-  const total = clamp(d.score * 0.3 + c.score * 0.35 + r.score * 0.35);
+  const 종합 = Math.round(
+    수요점수 * 0.3 + 경쟁점수 * 0.35 + 임대료점수 * 0.35,
+  );
 
-  // 톤: 65+ 양호, 35-64 보통, 35 미만 우려, 데이터 결손 시 데이터부족
+  // 톤
   let 톤: ScoreResult["톤"];
-  if (input.수요.인구 == null && !input.임대료.층별["1"]) 톤 = "데이터부족";
-  else if (total >= 65) 톤 = "양호";
-  else if (total >= 35) 톤 = "보통";
+  if (input.수요.인구 == null && !f1?.임대료_천원_m2) 톤 = "데이터부족";
+  else if (종합 >= 65) 톤 = "양호";
+  else if (종합 >= 40) 톤 = "보통";
   else 톤 = "우려";
 
+  // 설명
+  const 수요설명parts: string[] = [];
+  if (input.수요.인구 != null) 수요설명parts.push(`인구 ${input.수요.인구.toLocaleString()}명`);
+  if (age3040 != null) 수요설명parts.push(`30~40대 ${age3040.toFixed(0)}%`);
+  const 수요설명 = 수요설명parts.join(", ");
+
+  const yoyText =
+    input.경쟁.시군구_YoY_pct == null
+      ? ""
+      : input.경쟁.시군구_YoY_pct > 1
+        ? ", 시군구 증가 추세"
+        : input.경쟁.시군구_YoY_pct < -1
+          ? ", 시군구 감소 추세"
+          : ", 시군구 안정";
+  const 경쟁설명 = `반경 500m 에 ${input.경쟁.반경500m_동일업종}개${yoyText}`;
+
   return {
-    수요: d.score,
-    경쟁: c.score,
-    임대료: r.score,
-    종합: Math.round(total),
+    수요: 수요점수,
+    경쟁: 경쟁점수,
+    임대료: 임대료점수,
+    종합,
     톤,
-    설명: { 수요: d.설명, 경쟁: c.설명, 임대료: r.설명 },
+    설명: { 수요: 수요설명, 경쟁: 경쟁설명, 임대료: 임대료설명 },
   };
 }
