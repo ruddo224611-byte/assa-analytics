@@ -170,59 +170,59 @@ export default async function ReportPage({ params }: PageProps) {
     krwPerM2K == null ? null : Math.round(krwPerM2K * 1000 * 3.305785);
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 sm:py-12">
+    <div className="mx-auto max-w-4xl px-4 py-8 sm:py-12">
       {/* ======== 1. 헤더 ======== */}
-      <header className="mb-8">
-        <div className="flex flex-wrap gap-2 mb-3">
-          <span className="chip-brand">{시도}</span>
-          <span className="chip-brand">{시군구}</span>
-          <span className="chip-brand">{행정동}</span>
+      <header className="mb-10">
+        <div className="flex flex-wrap gap-2 mb-4">
+          <span className="chip-brand text-sm">{시도}</span>
+          <span className="chip-brand text-sm">{시군구}</span>
+          <span className="chip-brand text-sm">{행정동}</span>
         </div>
-        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
+        <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-slate-900">
           {업종} <span className="text-brand-600">상권 리포트</span>
         </h1>
-        <p className="mt-3 text-sm text-slate-500">
+        <p className="mt-4 text-base sm:text-lg text-slate-500">
           이 자리에 {업종} 차려도 될지, 데이터로 한 번 보세요.
         </p>
         {/* 기준일 카드 */}
-        <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+        <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
           {Object.entries(data.meta.기준일).filter(([k]) => k !== "상가").map(([k, v]) => (
-            <div key={k} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-              <div className="text-slate-400">{k} 기준</div>
-              <div className="text-slate-700 font-medium mt-0.5">{v}</div>
+            <div key={k} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+              <div className="text-slate-400 text-xs">{k} 기준</div>
+              <div className="text-slate-700 font-medium mt-1">{v}</div>
             </div>
           ))}
         </div>
       </header>
 
       {/* ======== AI 한 줄 요약 (Phase 3) — 헤더 바로 아래 ======== */}
-      <section className="card p-5 sm:p-6 mb-6 bg-gradient-to-br from-brand-50 to-white border-brand-100">
+      <section className="card p-6 sm:p-8 mb-8 bg-gradient-to-br from-brand-50 to-white border-brand-100">
         {/* 별명 */}
         {aiEntry?.llm.alias ? (
-          <div className="mb-3">
-            <span className="inline-block text-[11px] font-medium text-brand-600 bg-brand-100 px-2 py-1 rounded">
+          <div className="mb-4">
+            <span className="inline-block text-xs font-medium text-brand-600 bg-brand-100 px-2.5 py-1 rounded">
               상권 한 줄
             </span>
-            <h2 className="mt-2 text-lg sm:text-xl font-bold text-slate-900">
+            <h2 className="mt-2.5 text-2xl sm:text-3xl font-bold text-slate-900">
               &ldquo;{aiEntry.llm.alias}&rdquo;
             </h2>
           </div>
         ) : null}
 
         {/* 점수 4종 — Day 3: 시군구 분위 기반 (50점 = 시군구 평균) */}
-        <div className="grid grid-cols-4 gap-2 mb-3">
+        <div className="grid grid-cols-4 gap-2 sm:gap-3 mb-3">
           <ScoreBadge label="수요" sub="사람 많은지" value={score.수요} />
           <ScoreBadge label="경쟁" sub="비어있는지" value={score.경쟁} />
           <ScoreBadge label="임대료" sub="저렴한지" value={score.임대료} />
           <ScoreBadge label="종합" sub="전체 평가" value={score.종합} highlight={score.톤} />
         </div>
-        <p className="text-[11px] text-slate-400 mb-4 text-center">
+        <p className="text-sm text-slate-400 mb-5 text-center">
           ※ <strong className="text-slate-500">{시군구} 안에서</strong> 상대 위치. 100 = {시군구} 1위, 50 = 평균, 0 = 꼴찌.
         </p>
 
         {/* 한 줄 요약 (LLM) — file cache 있으면 즉시, 없으면 on-demand (Suspense lazy) */}
         {aiEntry?.llm.summary ? (
-          <p className="text-sm sm:text-base text-slate-700 leading-relaxed whitespace-pre-line">
+          <p className="text-base sm:text-lg text-slate-700 leading-relaxed whitespace-pre-line">
             {aiEntry.llm.summary}
           </p>
         ) : (
@@ -231,7 +231,7 @@ export default async function ReportPage({ params }: PageProps) {
           </Suspense>
         )}
 
-        <p className="mt-4 text-[11px] text-slate-400">
+        <p className="mt-5 text-xs text-slate-400">
           ※ 점수·요약은 데이터 기반 참고용. 단정적 판정 X. 현장 확인 필수.
         </p>
       </section>
@@ -325,11 +325,8 @@ export default async function ReportPage({ params }: PageProps) {
       </Section>
 
       {/* ======== 5. 시뮬레이터 ======== */}
-      <Section title="🧮 창업 시뮬레이터" subtitle="평수·객단가·일 손님·인건비 입력 → BEP 즉시 계산">
-        <Simulator
-          업종={업종}
-          rentKrwPerM2K={adong.임대료.층별?.["1층"]?.임대료_천원_m2 ?? null}
-        />
+      <Section title="🧮 창업 시뮬레이터" subtitle="층·평수·객단가·일 손님·인건비 입력 → BEP 즉시 계산">
+        <Simulator 업종={업종} floors={adong.임대료.층별} />
       </Section>
 
       {/* ======== 푸터 (필수 고정문) ======== */}
@@ -350,9 +347,9 @@ export default async function ReportPage({ params }: PageProps) {
 
 function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <section className="card p-5 sm:p-6 mb-6">
-      <h2 className="text-lg sm:text-xl font-bold text-slate-900">{title}</h2>
-      {subtitle && <p className="text-xs text-slate-500 mt-1 mb-4">{subtitle}</p>}
+    <section className="card p-6 sm:p-8 mb-8">
+      <h2 className="text-xl sm:text-2xl font-bold text-slate-900">{title}</h2>
+      {subtitle && <p className="text-sm text-slate-500 mt-1.5 mb-5">{subtitle}</p>}
       {children}
     </section>
   );
@@ -360,14 +357,14 @@ function Section({ title, subtitle, children }: { title: string; subtitle?: stri
 
 function Stat({ label, value, unit, highlight }: { label: string; value: string; unit?: string; highlight?: string }) {
   return (
-    <div className="rounded-lg bg-slate-50 px-3 py-3">
-      <div className="text-[11px] text-slate-500">{label}</div>
-      <div className="text-xl font-bold text-slate-900 mt-1">
+    <div className="rounded-lg bg-slate-50 px-4 py-4">
+      <div className="text-sm text-slate-500">{label}</div>
+      <div className="text-2xl sm:text-3xl font-bold text-slate-900 mt-1">
         {value}
-        {unit && <span className="text-sm text-slate-400 font-normal ml-0.5">{unit}</span>}
+        {unit && <span className="text-base text-slate-400 font-normal ml-1">{unit}</span>}
       </div>
       {highlight && (
-        <div className="text-[10px] text-brand-700 mt-1 font-medium">{highlight}</div>
+        <div className="text-xs text-brand-700 mt-1.5 font-medium">{highlight}</div>
       )}
     </div>
   );
@@ -439,12 +436,12 @@ function ScoreBadge({ label, sub, value, highlight }: { label: string; sub?: str
       : value >= 35 ? "bg-slate-100 text-slate-700"
       : "bg-amber-100 text-amber-700";
   return (
-    <div className={`rounded-lg ${color} px-2 py-2 text-center`}>
-      <div className="text-[11px] font-medium">{label}</div>
-      {sub && <div className="text-[9px] opacity-70 leading-tight">{sub}</div>}
-      <div className="text-xl font-bold mt-1">{value}</div>
+    <div className={`rounded-lg ${color} px-3 py-3 text-center`}>
+      <div className="text-sm font-medium">{label}</div>
+      {sub && <div className="text-[11px] opacity-70 leading-tight mt-0.5">{sub}</div>}
+      <div className="text-2xl sm:text-3xl font-bold mt-1.5">{value}</div>
       {highlight && (
-        <div className="text-[10px] mt-0.5 font-semibold">
+        <div className="text-xs mt-1 font-semibold">
           {highlight}
         </div>
       )}
@@ -456,17 +453,17 @@ function AgeChart({ data }: { data: Record<string, number | null> }) {
   const entries = Object.entries(data).filter(([k]) => k !== "100세 이상");
   const max = Math.max(...entries.map(([, v]) => v ?? 0));
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2">
       {entries.map(([age, v]) => (
-        <div key={age} className="flex items-center gap-2 text-xs">
-          <div className="w-14 text-slate-500">{age}</div>
-          <div className="flex-1 h-5 bg-slate-100 rounded-sm overflow-hidden">
+        <div key={age} className="flex items-center gap-3 text-sm">
+          <div className="w-16 text-slate-500">{age}</div>
+          <div className="flex-1 h-6 bg-slate-100 rounded-sm overflow-hidden">
             <div
               className="h-full bg-brand-400"
               style={{ width: `${max ? ((v ?? 0) / max) * 100 : 0}%` }}
             />
           </div>
-          <div className="w-16 text-right text-slate-600 font-medium">
+          <div className="w-20 text-right text-slate-600 font-medium">
             {v?.toLocaleString("ko-KR") ?? "—"}
           </div>
         </div>
