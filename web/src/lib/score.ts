@@ -146,13 +146,14 @@ export function calculateScore(
   경쟁점수 = Math.round(경쟁점수);
 
   // 임대료 = 1층 임대료 분위 (낮을수록 ↑)
-  const f1 = input.임대료.층별?.["1"];
+  // 데이터 키는 "1층" (한글). Day 3 버그: "1" 만 체크해서 다 fallback 50점이었음
+  const f1 = input.임대료.층별?.["1층"] ?? input.임대료.층별?.["1"];
   let 임대료점수 = 50;
   let 임대료설명 = "1층 임대료 데이터 없음";
   if (f1?.임대료_천원_m2) {
     임대료점수 = percentileScore(f1.임대료_천원_m2, ctx.rentFloor1, false);
     const 평당 = Math.round(f1.임대료_천원_m2 * 1000 * 3.305785);
-    임대료설명 = `1층 ${f1.임대료_천원_m2} 천원/㎡ (평당 약 ${평당.toLocaleString()}원/월)`;
+    임대료설명 = `1층 ${f1.임대료_천원_m2.toFixed(1)} 천원/㎡ (평당 약 ${평당.toLocaleString()}원/월)`;
   }
 
   // 종합: 수요 30% + 경쟁 35% + 임대료 35%
